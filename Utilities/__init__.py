@@ -1,3 +1,16 @@
+"""
+    Components:
+        + Empty_frames_remover (): Void [Removing empty frames] 
+        + Normalizing_drop_Position (): Void []
+        + Detect&crop(): Void []
+"""
+
+import os
+import cv2
+import numpy as np
+import tqdm
+
+
 def singleFolderDropNormalizer(images: list[os.PathLike]):
     """
     This function normalizes the drop images in a single folder.
