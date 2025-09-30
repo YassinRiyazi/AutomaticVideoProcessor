@@ -1,0 +1,8 @@
+torch
+colorama
+skimage
+cv2
+tqdm
+matplotlib
+PyYAML
+pandas
