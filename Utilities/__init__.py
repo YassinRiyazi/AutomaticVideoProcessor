@@ -4,61 +4,47 @@
         + Normalizing_drop_Position (): Void []
         + Detect&crop(): Void []
 """
+import os,sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import BaseUtils
 
-import os
-import cv2
-import numpy as np
-import tqdm
+if __name__ == "__main__":
+    from Detection_Sparse import Walker
+    from Detection_frameNormalizer import singleFolderDropNormalizer
+else:
+    from .Detection_Sparse import Walker
+    from .Detection_frameNormalizer import singleFolderDropNormalizer
+
+image_folder = r"D:\Videos\S1_30per_T1_C001H001S0001"
 
 
-def singleFolderDropNormalizer(images: list[os.PathLike]):
+def crop_Save(image_folder: str,
+                ):
     """
-    This function normalizes the drop images in a single folder.
-    It removes images that do not meet the criteria defined by the YOLO model.
+    Crop and save images from the specified folder.
     """
-    # Load the model
-    BaseAddress = os.path.dirname(__file__)
-    weights_path = os.path.join(BaseAddress,'..', "Weights", "Gray-320-s.engine")
-    weights_path = os.path.normpath(weights_path)
-    yolo_m = YOLO(weights_path, task="detect",verbose=False)
+    BaseUtils.Main(experiment = os.path.join(image_folder, str(BaseUtils.config["rotated_frames_folder"])),
+         SaveAddress = os.path.join(image_folder, str(BaseUtils.config["databases_folder"])),
+         SaveAddressCSV = os.path.join(image_folder, str(BaseUtils.config["databases_folder"])),
+         extension = str(BaseUtils.config["image_extension"]),
+         Detect = BaseUtils.DetectCropSave)
+    
+def main(image_folder: str,
+         ):
+    #Cleaning empty frames
+    Walker(image_folder,skip = 450,)
+    Walker(image_folder,skip = 10)
+    BaseUtils.FileIndexChecker(FolderAddress=image_folder,
+                                frameAddress=str(BaseUtils.config["rotated_frames_folder"]))
 
-    def _forward(image):
-        """
-        Forward pass through the YOLO model.
-        Returns the bounding box coordinates.
-        """
-        for image in tqdm.tqdm(images):
-            image       = cv2.imread(image, cv2.IMREAD_UNCHANGED)
-            image       = cv2.resize(image, (640, 640))  # Resize to match YOLO input size
-            image       = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # Convert to RGB
-            results     = yolo_m.predict(image, verbose=False)
+    images = BaseUtils.ImageLister(FolderAddress=image_folder,
+                                       frameAddress=str(BaseUtils.config["rotated_frames_folder"]),)
+    singleFolderDropNormalizer(images,BaseUtils.DropDetection_YOLO)# type: ignore
 
-            for file_idx, res in enumerate(results):
-                x1, _, x2, _ = np.array(res.boxes.xyxy[:, :].cpu().numpy(), dtype=np.float32)[0]
+    # BaseUtils.FileIndexChecker(FolderAddress=image_folder,
+    #                             frameAddress=str(BaseUtils.config["rotated_frames_folder"]))
 
-                if x2 < 1200:
-                    return True
-                else:
-                    os.remove(image)
-                    break  # Exit after removing the first invalid image
-    def _backward(images):
-        """
-        Backward pass through the YOLO model.
-        This function is not used in this context but is kept for consistency.
-        """
-        for image in reversed(images):
-            image       = cv2.imread(image, cv2.IMREAD_UNCHANGED)
-            image       = cv2.resize(image, (640, 640))  # Resize to match YOLO input size
-            image       = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # Convert to RGB
-            results     = yolo_m.predict(image, verbose=False)
-
-            for file_idx, res in enumerate(results):
-                x1, _, x2, _ = np.array(res.boxes.xyxy[:, :].cpu().numpy(), dtype=np.float32)[0]
-
-                if x1 < 40:
-                    return True
-                else:
-                    os.remove(image)
-                    break  # Exit after removing the first invalid image
-    _forward(images)
-    _backward(images)
+    crop_Save(image_folder=image_folder)    
+if __name__ == "__main__":
+    image_folder = r"D:\Videos\S1_30per_T1_C001H001S0001"
+    main(image_folder=image_folder)

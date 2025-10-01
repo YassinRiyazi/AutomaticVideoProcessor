@@ -23,9 +23,11 @@
 
         + CleanUP(): Void []
 """
-
+import glob
+import cv2
 import FrameExtractor
 import BaseLine
+import Utilities
 
 if __name__ == "__main__":
     fe = FrameExtractor.FrameExtractor()
@@ -38,3 +40,12 @@ if __name__ == "__main__":
                fps=30)
 
     bld.Forward(_folder)
+
+
+    for address in glob.glob(r"D:\Videos\S1_30per_T1_C001H001S0001\frames_rotated\*.png"):
+        image = cv2.imread(address, cv2.IMREAD_UNCHANGED)
+        image = image[:,40:-40]
+        image = cv2.resize(image, (1245,130))  # Resize to match YOLO input size
+        cv2.imwrite(address,image)
+
+    Utilities.main(_folder)

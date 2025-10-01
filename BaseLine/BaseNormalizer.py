@@ -53,7 +53,7 @@ def fit_and_rotate_image(image_path: os.PathLike[str],
     image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise FileNotFoundError(f"Image not found or unable to load: {image_path}")
-    h, w = image.shape#[:2]
+    h, w = image.shape[:2]
 
     # Focus on the bottom region
     focus_height = int(h * focus_ratio)
@@ -161,7 +161,7 @@ def line_finder(image:cv2.Mat, rotation_matrix:cv2.Mat, black_base_line:int = 10
         int: Height of the line in the rotated image.
     """
     image = cv2.imread(image, cv2.IMREAD_GRAYSCALE)
-    (h, w) = image.shape
+    (h, w) = image.shape[:2]
     # rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
     rotated_image = cv2.warpAffine(image, rotation_matrix, (w, h),
                                    flags=cv2.INTER_LINEAR,
@@ -219,7 +219,7 @@ def folderBaseLineNormalizer(experiment: os.PathLike[str]|str,
                 os.makedirs(output_path, exist_ok=True)
         
         image = cv2.imread(os.path.join(experiment, files[2]), cv2.IMREAD_GRAYSCALE)
-        (h, w) = image.shape
+        (h, w) = image.shape[:2]
         center = (w // 2, h // 2)
         angle,_shape, rotated_image = fit_and_rotate_image(os.path.join(experiment, files[2]),results=True)
         rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)

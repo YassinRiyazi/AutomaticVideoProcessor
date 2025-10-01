@@ -114,17 +114,17 @@ class FrameExtractor:
                 print(colorama.Fore.RED + f"Zero-size image file detected and removed: {img_file}" + colorama.Style.RESET_ALL)
                 os.remove(img_file)
 
-    def FileIndexChecker(self, FolderAddress: str):
-        """
-        Checking images are sequentially indexed without missing numbers
-        """
-        images = BaseUtils.ImageLister(FolderAddress=FolderAddress)
+    # def FileIndexChecker(self, FolderAddress: str):
+    #     """
+    #     Checking images are sequentially indexed without missing numbers
+    #     """
+    #     images = BaseUtils.ImageLister(FolderAddress=FolderAddress)
 
-        # extracting image index from filename with regex and if there is missing index raise error
-        image_indices = [int(re.search(r'(\d+)', os.path.basename(img_file)).group(1)) for img_file in images] # type: ignore
-        for i, _ in enumerate(images, start=image_indices[0]):    
-            if i != image_indices[i-1]:
-                raise ValueError(colorama.Fore.RED + f"Missing image index detected: {i}" + colorama.Style.RESET_ALL)
+    #     # extracting image index from filename with regex and if there is missing index raise error
+    #     image_indices = [int(re.search(r'(\d+)', os.path.basename(img_file)).group(1)) for img_file in images] # type: ignore
+    #     for i, _ in enumerate(images, start=image_indices[0]):    
+    #         if i != image_indices[i-1]:
+    #             raise ValueError(colorama.Fore.RED + f"Missing image index detected: {i}" + colorama.Style.RESET_ALL)
 
     def Forward(self,
                 FolderAddress: str,
@@ -133,7 +133,7 @@ class FrameExtractor:
         _ = self.extract_frames(FolderAddress=FolderAddress,fps=fps)
         self.BandGMaker(FolderAddress=FolderAddress)
         self.HealthChecker(FolderAddress=FolderAddress)
-        self.FileIndexChecker(FolderAddress=FolderAddress)
+        BaseUtils.FileIndexChecker(FolderAddress=FolderAddress)
 
 
 if __name__ == "__main__":

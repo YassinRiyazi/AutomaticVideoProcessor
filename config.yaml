@@ -2,3 +2,9 @@ image_extension : "*.png"
 frame_rate    : 30
 frame_folder  : "frames"
 rotated_frames_folder : "frames_rotated"
+databases_folder : "databases"
+
+
+# Detection
+yolo_conf : 0.8
+yolo_name : "Gray-320-s"

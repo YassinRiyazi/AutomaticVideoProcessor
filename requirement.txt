@@ -6,3 +6,5 @@ tqdm
 matplotlib
 PyYAML
 pandas
+ultralytics
+tensorrt-cu12
