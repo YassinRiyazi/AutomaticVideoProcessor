@@ -8,3 +8,7 @@ databases_folder : "databases"
 # Detection
 yolo_conf : 0.8
 yolo_name : "Gray-320-s"
+
+
+fps: 4000
+cm_on_pixel_ratio: 0.0039062

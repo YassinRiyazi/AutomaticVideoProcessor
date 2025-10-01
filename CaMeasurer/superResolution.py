@@ -12,7 +12,8 @@ import cv2
 import torch
 import numpy    as np
 import torch.nn as nn
-
+from numpy.typing import NDArray
+from typing import Tuple
 # Define the equivalent PyTorch model
 class PyTorchModel(nn.Module):
     
@@ -124,11 +125,11 @@ class initiation():
             self.sup_res_model = self.sup_res_model.cuda()
         script_dir = os.path.dirname(os.path.abspath(__file__))
 
-        self.sup_res_model.load_state_dict(torch.load(os.path.join(script_dir,'..','models','converted_model.pt'), weights_only=True))
+        self.sup_res_model.load_state_dict(torch.load(os.path.join(script_dir,'models','converted_model.pt'), weights_only=True))
         self.sup_res_model.eval()
 
 # Upscale the image using the optimized model and OpenCV
-def upscale_image(model, img, kernel):
+def upscale_image(model: torch.nn.Module, img: NDArray[np.uint8], kernel: NDArray[np.uint8]) -> NDArray[np.uint8]:
     """
     Apply super-resolution and postprocessing to an input RGB image.
 

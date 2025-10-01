@@ -394,7 +394,7 @@ class DetectCropSave(Detect_Template):
                 ) -> None:
         img_name    = os.path.basename(image)
         save_path   = os.path.join(SaveAddress, img_name)
-        crop_and_save_image(_image, save_path, endpoint, beginning, tolerance=5)
+        crop_and_save_image(_image, save_path, endpoint, beginning, tolerance=15)
 
         self.rows.append({'image': img_name, 'endpoint': endpoint, 'beginning': beginning})
       

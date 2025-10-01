@@ -7,7 +7,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-
+from numpy.typing import NDArray
 if __name__ == "__main__":
     import  cv2
     from    criteria_definition import left_angle, right_angle, middle_angle
@@ -15,6 +15,9 @@ if __name__ == "__main__":
     from    edgeDetection import *
 
 else:
+    # import os,sys
+    # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
     from .criteria_definition import left_angle, right_angle, middle_angle
     from .processing import poly_fitting
 
@@ -217,10 +220,16 @@ def vertical_center(i_list, j_list, intersection_margin=4):
 
     return vertical_center, i_location_list, mean_list
 
-def visualize(save_address , i_list,j_list,i_left,j_left,i_right,j_right,
-             j_poly_left,i_poly_left,j_poly_right,i_poly_right,x_cropped,
-             i_poly_left_rotated, j_poly_left_rotated, i_poly_right_rotated, j_poly_right_rotated,
-             cm_on_pixel=5/1280, middle_line_switch=0, dpi=100):
+def visualize(save_address:str , 
+              i_list:NDArray[np.int64],                 j_list:NDArray[np.int64],
+              i_left:NDArray[np.int64],                 j_left:NDArray[np.int64],
+              i_right:NDArray[np.int64],                j_right:NDArray[np.int64],
+              j_poly_left:NDArray[np.float64],          i_poly_left:NDArray[np.float64],
+              j_poly_right:NDArray[np.float64],         i_poly_right:NDArray[np.float64],
+              x_cropped:int,
+              i_poly_left_rotated:NDArray[np.float64],  j_poly_left_rotated:NDArray[np.float64], 
+              i_poly_right_rotated:NDArray[np.float64], j_poly_right_rotated:NDArray[np.float64],
+              cm_on_pixel:float=5/1280, middle_line_switch:int=0, dpi:int=100):
     """
     Visualize the contact angle measurement results and save the figure.
 

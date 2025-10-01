@@ -2,7 +2,7 @@ import os
 import cv2
 import shutil
 
-def check_and_save_color_images(folder_path):
+def check_and_save_color_images(folder_path:str):
     """
     Check images in a folder and ensure they are saved as 3-channel color images.
 
@@ -64,51 +64,10 @@ def check_and_save_color_images(folder_path):
                 print(f"Saved color image: {filename}")
 
 
-def make_folders(ad):
-    """
-    Create two subfolders 'SR_edge' and 'SR_result' inside the given directory.
-
-    If either folder already exists, it is deleted and recreated to ensure a clean directory.
-
-    Parameters:
-        ad (str): The path to the parent directory where subfolders will be created.
-
-    Raises:
-        None
-
-    Example:
-        >>> make_folders("/path/to/project")
-
-    Caution:
-        This function will **delete** existing 'SR_edge' and 'SR_result' folders 
-        along with all their contents, if they already exist.
-
-    Notes:
-        - The folders created are:
-            - 'SR_edge': Typically used to store edge detection outputs.
-            - 'SR_result': Typically used to store final super-resolution results.
-        - Uses `shutil.rmtree()` to forcefully delete existing directories before recreating.
-
-    See Also:
-        - `os.makedirs`: For creating directories.
-        - `shutil.rmtree`: For removing directories and their contents.
-
-    Warning:
-        Any existing data in 'SR_edge' and 'SR_result' will be permanently lost if present.
-
-    Author:
-        - Sajjad Shumaly
-    """
-    NewFolder2 = os.path.join(ad, "SR_edge")
-    try:
-        os.makedirs(NewFolder2)
-    except:
-        shutil.rmtree(NewFolder2)
-        os.makedirs(NewFolder2)
-
-    NewFolder3 = os.path.join(ad, "SR_result")
-    try:
-        os.makedirs(NewFolder3)
-    except:
-        shutil.rmtree(NewFolder3)
-        os.makedirs(NewFolder3)
+def make_folders(address:str) -> None:
+    if os.path.exists(address):
+        shutil.rmtree(address)
+        os.makedirs(address)
+    else:
+        os.makedirs(address)
+    
