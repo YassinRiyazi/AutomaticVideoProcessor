@@ -1,17 +1,22 @@
 {
     "cSpell.words": [
+        "axvline",
         "cmap",
         "ffprobe",
         "headlessly",
         "imread",
+        "imshow",
         "imwrite",
         "ndarray",
         "polyfit",
         "Riyazi",
         "Sajjad",
         "Shumaly",
+        "SROF",
+        "Trulli",
         "xlabel",
         "Yassin",
+        "yaxis",
         "ylabel"
     ],
     "python-envs.defaultEnvManager": "ms-python.python:system",

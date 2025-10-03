@@ -1,0 +1,12 @@
+Logger V1.0.0 
+This is the log file for recording exceptions and errors.
+
+[2025-10-03 18:08:50]
+WARNING: This is a division by zero error
+
+============================================================
+
+[2025-10-03 18:08:50]
+SUCCESS: This is a success message.
+
+============================================================

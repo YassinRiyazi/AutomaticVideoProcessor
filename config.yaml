@@ -1,5 +1,5 @@
 image_extension : "*.png"
-frame_rate    : 30
+frame_rate    : 25
 frame_folder  : "frames"
 rotated_frames_folder : "frames_rotated"
 databases_folder : "databases"

@@ -199,7 +199,7 @@ def process_image(filepath: str,
     rotated_image[cropped_height+10:, :] = 0  # Set the top part of the image to black
 
     # TODO: normalize bottom row
-    _rotated_image = bottom_row_unifierGRAY(rotated_image, target_height=130)
+    _rotated_image = bottom_row_unifierGRAY(rotated_image, target_height=w)
     
      ## Close operation fills small dark holes # Kernel size depends on spot size
     # _rotated_image = cv2.morphologyEx(_rotated_image, cv2.MORPH_CLOSE, kernel)

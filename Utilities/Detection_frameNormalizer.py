@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import BaseUtils
 
 def singleFolderDropNormalizer(images: list[str],
-                               detector = BaseUtils.DropDetection_SUM):
+                               detector = BaseUtils.DropDetection_YOLO):#BaseUtils.DropDetection_SUM
     """
     This function normalizes the drop images in a single folder.
     It removes images that do not meet the criteria defined by the YOLO model.

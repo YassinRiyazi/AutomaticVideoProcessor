@@ -128,9 +128,10 @@ class FrameExtractor:
 
     def Forward(self,
                 FolderAddress: str,
-                fps: int):
+                fps: int = int(BaseUtils.config['frame_rate'])):
         # showing progress with tqdm and updating in place
-        _ = self.extract_frames(FolderAddress=FolderAddress,fps=fps)
+        _ = self.extract_frames(FolderAddress=FolderAddress,
+                                fps=fps)
         self.BandGMaker(FolderAddress=FolderAddress)
         self.HealthChecker(FolderAddress=FolderAddress)
         BaseUtils.FileIndexChecker(FolderAddress=FolderAddress)
