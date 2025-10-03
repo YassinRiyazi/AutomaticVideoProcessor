@@ -17,17 +17,17 @@ else:
 
 image_folder = r"D:\Videos\S1_30per_T1_C001H001S0001"
 
-
+import BaseUtils.drop_detection as BUDD
 def crop_Save(image_folder: str,
                 ):
     """
     Crop and save images from the specified folder.
     """
-    BaseUtils.Main(experiment = os.path.join(image_folder, str(BaseUtils.config["rotated_frames_folder"])),
+    BUDD.Main(experiment = os.path.join(image_folder, str(BaseUtils.config["rotated_frames_folder"])),
          SaveAddress = os.path.join(image_folder, str(BaseUtils.config["databases_folder"])),
          SaveAddressCSV = os.path.join(image_folder, str(BaseUtils.config["databases_folder"])),
          extension = str(BaseUtils.config["image_extension"]),
-         Detect = BaseUtils.DetectCropSave)
+         Detect = BUDD.DetectCropSave)
     
 def main(image_folder: str,
          ):

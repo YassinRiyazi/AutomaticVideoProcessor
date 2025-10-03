@@ -23,6 +23,7 @@
 
         + CleanUP(): Void []
 """
+import gc
 import os
 import cv2
 import glob
@@ -39,9 +40,10 @@ if __name__ == "__main__":
     bld = BaseLine.BaseLine()
     
 
-    Video_list = glob.glob("/media/d2u25/Dont/Teflon-AVP/*/*/*")
+    Video_list = glob.glob("/media/Dont/Teflon-AVP/*/*/*")
 
     for _folder in Video_list:
+        _folder = "/media/Dont/Teflon-AVP/285/S3-SDS99_D/T120_01_0.900951687825"
         if os.path.isfile(os.path.join(_folder,'.done')):
             continue
         else:
@@ -68,9 +70,11 @@ if __name__ == "__main__":
         #     cv2.imwrite(address,image)
 
         Utilities.main(_folder)
+        gc.collect()
 
         CaMeasurer.processes_mp(_folder, num_workers=10)
 
         create_video_from_images(image_folder=os.path.join(_folder, "SR_edge"),
                                  output_video_path=os.path.join(_folder, "result_video.mkv"),
                                  )
+        break

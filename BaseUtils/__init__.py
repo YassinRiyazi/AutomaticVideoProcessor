@@ -10,8 +10,10 @@ import colorama
 
 if __name__ == "__main__":
     from config import config
+    from drop_detection import DropDetection_YOLO, DropDetection_SUM, DropDetection_SUM_YOLO
 else:
     from .config import config
+    from .drop_detection import DropDetection_YOLO, DropDetection_SUM, DropDetection_SUM_YOLO
 
 
 def ImageLister(FolderAddress: str,
@@ -22,8 +24,8 @@ def ImageLister(FolderAddress: str,
         """
         if not os.path.exists(os.path.join(FolderAddress, frameAddress)):
             raise FileNotFoundError(colorama.Fore.RED + f"No frames directory found in {FolderAddress}. Please extract frames first." + colorama.Style.RESET_ALL)
-        
-        images = glob.glob(os.path.join(FolderAddress, frameAddress, extension)) 
+
+        images = glob.glob(os.path.join(FolderAddress, frameAddress, f"frame*{extension}"))
         if len(images) == 0:
             images = glob.glob(os.path.join(FolderAddress, frameAddress, "*.jpg"))
         elif len(images) == 0:

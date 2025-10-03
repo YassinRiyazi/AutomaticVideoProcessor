@@ -60,7 +60,7 @@ def delInRange(_start: int, _end: int, _list_addresses: listImages, max_threads:
     return None
 
 def detect_and_filter_batch(index_range: Tuple[int, int, listImages, int],
-                            detector = BaseUtils.DropDetection_YOLO) -> None:
+                            detector = BaseUtils.DropDetection_SUM_YOLO) -> None:
     """
     Worker function for a process that detects drops in a batch of frames using YOLO.
     Deletes all frames in the range if no drops are detected in the first and last frames.
@@ -73,14 +73,16 @@ def detect_and_filter_batch(index_range: Tuple[int, int, listImages, int],
             - skip (int): Step size (interval between frames)
             - yolo_conf (float): YOLO confidence threshold
     """
-    assert not isinstance(detector, BaseUtils.DropDetection), colorama.Fore.RED + "detector must not be an instance of DropDetection" + colorama.Style.RESET_ALL
+    assert not isinstance(detector, BaseUtils.DropDetection_SUM_YOLO), colorama.Fore.RED + "detector must not be an instance of DropDetection" + colorama.Style.RESET_ALL
 
     start_idx, end_idx, frame_list, skip = index_range
     in_detector = detector() if callable(detector) else detector
 
     for i in range(start_idx, end_idx, skip):
-        frame1 = cv2.imread(frame_list[i])
-        frame2 = cv2.imread(frame_list[i + skip - 1])
+        # frame1 = cv2.imread(frame_list[i])
+        # frame2 = cv2.imread(frame_list[i + skip - 1])
+        frame1 = frame_list[i]
+        frame2 = frame_list[i + skip - 1]
 
         # Run YOLO detection on both frames
         result1, has_drop1 = in_detector.detect_drops(frame1)

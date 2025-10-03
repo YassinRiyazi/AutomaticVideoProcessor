@@ -12,6 +12,10 @@
     Description: 
         This module provides a utility class for logging exceptions with detailed traceback information.
 
+    Note:
+        Will not handle 
+            1. FileNotFoundError
+
 """
 import os 
 import sys
