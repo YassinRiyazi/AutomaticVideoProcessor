@@ -1,5 +1,5 @@
 image_extension : "*.png"
-frame_rate    : 25
+frame_rate    : 25 # fps video in the folder
 frame_folder  : "frames"
 rotated_frames_folder : "frames_rotated"
 databases_folder : "databases"
@@ -10,5 +10,5 @@ yolo_conf : 0.8
 yolo_name : "Gray-320-s"
 
 
-fps: 4000
+fps_experiment: 4000 # fps of the original experiment video
 cm_on_pixel_ratio: 0.0039062

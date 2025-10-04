@@ -25,7 +25,7 @@
 """
 import gc
 import os
-import cv2
+# import cv2
 import glob
 import FrameExtractor
 import BaseLine
@@ -40,10 +40,10 @@ if __name__ == "__main__":
     bld = BaseLine.BaseLine()
     
 
-    Video_list = glob.glob("/media/Dont/Teflon-AVP/*/*/*")
+    Video_list = glob.glob("/media/Dont/Teflon-AVP/285/*/*")
 
     for _folder in Video_list:
-        _folder = "/media/Dont/Teflon-AVP/285/S3-SDS99_D/T120_01_0.900951687825"
+        # _folder = "/media/Dont/Teflon-AVP/285/S3-SDS99_D/T120_01_0.900951687825"
         if os.path.isfile(os.path.join(_folder,'.done')):
             continue
         else:
@@ -51,6 +51,9 @@ if __name__ == "__main__":
             shutil.rmtree(os.path.join(_folder, "frames_rotated"),  ignore_errors=True)
             shutil.rmtree(os.path.join(_folder, "databases"),       ignore_errors=True)
             shutil.rmtree(os.path.join(_folder, "SR_edge"),         ignore_errors=True)
+            os.remove(os.path.join(_folder, 'error_log.txt')) if os.path.isfile(os.path.join(_folder, 'error_log.txt')) else None
+            os.remove(os.path.join(_folder, 'result.csv')) if os.path.isfile(os.path.join(_folder, 'result.csv')) else None
+            os.remove(os.path.join(_folder, 'result_video.mkv')) if os.path.isfile(os.path.join(_folder, 'result_video.mkv')) else None
 
         print(f"Processing folder: {_folder}")
 
@@ -77,4 +80,4 @@ if __name__ == "__main__":
         create_video_from_images(image_folder=os.path.join(_folder, "SR_edge"),
                                  output_video_path=os.path.join(_folder, "result_video.mkv"),
                                  )
-        break
+        # break

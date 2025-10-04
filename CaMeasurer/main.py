@@ -19,28 +19,14 @@ if __name__ == "__main__":
     from processing              import poly_fitting
     from criteria_definition    import right_angle, left_angle
 else:
-    # import os,sys
-    # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import os,sys
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-    from .criteria_definition   import *
-    from .superResolution         import upscale_image
-    from .edgeDetection           import edge_extraction, Advancing_pixel_selection_Euclidean, Receding_pixel_selection_Euclidean
-    from .processing              import poly_fitting
-    from .criteria_definition    import right_angle, left_angle
-
-
-def read_four_integers(file_path:str) -> list[int]:
-    """
-        Legacy code to read YOLO x1 x2 position from a text file.
-    """
-    with open(file_path, 'r') as file:
-        line = file.readline()
-        numbers = list(map(int, line.strip().split()))
-        if len(numbers) != 2:
-            raise ValueError("The file does not contain exactly four integers.")
-        return numbers
-
-
+    from criteria_definition   import *
+    from superResolution         import upscale_image
+    from edgeDetection           import edge_extraction, Advancing_pixel_selection_Euclidean, Receding_pixel_selection_Euclidean
+    from processing              import poly_fitting
+    from criteria_definition    import right_angle, left_angle
 
 def read_csv_for_endpoint_beginning(df: pd.DataFrame, image_name: str) -> list[int]:
     """
@@ -60,11 +46,6 @@ def read_csv_for_endpoint_beginning(df: pd.DataFrame, image_name: str) -> list[i
     Author:
         - Yassin Riyazi
     """
-    # try:
-    #     # df = pd.read_csv(csv_path)
-    # except FileNotFoundError:
-    #     raise FileNotFoundError(f"CSV file not found at: {csv_path}")
-
     match = df[df['image'] == image_name]
     if match.empty:
         raise ValueError(f"Image '{image_name}' not found in the CSV.")
@@ -94,7 +75,6 @@ def polyOrderDecider(degree:float|NDArray[np.float64],
         raise ValueError("Angle is not in the expected range.")
     return pixelNum,polyOrder
 
-
 def base_function_process(df: pd.DataFrame, 
                           ad: str,
                           name_files: list[str],
@@ -106,19 +86,17 @@ def base_function_process(df: pd.DataFrame,
                           right_polynomial_degree: int = 2
                           ):
     """
-        1.  Loading data
-        1.1.Loading the image
-        1.2.cropping the base line
-        1.3.loading the x1, x2 positions
-        2.  Super-resolution
-        3.  Extracting whole edge points
-        4.  Extracting advancing and receding points
+    1.  Loading data
+    1.1.Loading the image
+    1.2.cropping the base line
+    1.3.loading the x1, x2 positions
+    2.  Super-resolution
+    3.  Extracting whole edge points
+    4.  Extracting advancing and receding points
 
-        Test:
-            Removing two layer polynomial 
-            Removing super-resolution from this section
-
-    
+    Test:
+        Removing two layer polynomial 
+        Removing super-resolution from this section
     """
     # 1. Loading data
     just_drop       = cv2.imread(os.path.join(ad,name_files[file_number]))
@@ -126,7 +104,9 @@ def base_function_process(df: pd.DataFrame,
         raise FileNotFoundError(f"Image not found or unable to read: {os.path.join(ad, name_files[file_number])}")
     just_drop       = just_drop[:-5,:,:]
 
-    # x1              = read_four_integers(os.path.join(ad,name_files[file_number]).replace("jpg","txt"))[0]
+    # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    # just_drop = cv2.morphologyEx(just_drop, cv2.MORPH_CLOSE, kernel)
+
     x1, x2 = read_csv_for_endpoint_beginning(df, os.path.basename(name_files[file_number]))
     del x2 
 

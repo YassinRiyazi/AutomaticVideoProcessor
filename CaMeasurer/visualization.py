@@ -4,10 +4,11 @@
     Date: 01-07-2025
     Description: Visualization functions for the CaMeasurer module.
 """
-import pandas as pd
+# import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.typing import NDArray
+from typing import Tuple, List
 if __name__ == "__main__":
     import  cv2
     from    criteria_definition import left_angle, right_angle, middle_angle
@@ -15,11 +16,11 @@ if __name__ == "__main__":
     from    edgeDetection import *
 
 else:
-    # import os,sys
-    # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import os,sys
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-    from .criteria_definition import left_angle, right_angle, middle_angle
-    from .processing import poly_fitting
+    from criteria_definition import left_angle, right_angle, middle_angle
+    from processing import poly_fitting
 
 
 plt.rcParams["figure.figsize"] = (20,15)
@@ -29,14 +30,15 @@ import matplotlib
 matplotlib.use('Agg')
 
 
-def horizontal_center(i_list: list, j_list: list, intersection_margin: int = 4) -> tuple:
+def horizontal_center(i_list: NDArray[np.int64], j_list: NDArray[np.int64],
+                      intersection_margin: int = 4) -> Tuple:
     """
     Calculate the horizontal center of a shape defined by i_list and j_list coordinates.
     The intersection margin is a margin from the top edge to prevent errors in special cases.
 
     Args:
-        i_list (list): List of i-coordinates (horizontal).
-        j_list (list): List of j-coordinates (vertical).
+        i_list (NDArray[np.int64]): List of i-coordinates (horizontal).
+        j_list (NDArray[np.int64]): List of j-coordinates (vertical).
         intersection_margin (int): Margin to avoid edge cases.
 
     Returns:
@@ -105,7 +107,8 @@ def horizontal_center(i_list: list, j_list: list, intersection_margin: int = 4) 
 
     return horizontal_center, mean_list, j_location_list
 
-def vertical_center(i_list, j_list, intersection_margin=4):
+def vertical_center(i_list: NDArray[np.float64], j_list: NDArray[np.float64],
+                    intersection_margin: int = 4):
     """
     Calculate the vertical center of a shape defined by i_list and j_list coordinates.
     The intersection margin is a margin from the left side to prevent errors in special cases.
@@ -143,11 +146,12 @@ def vertical_center(i_list, j_list, intersection_margin=4):
     i_right_down, j_right_down = i_right[right_down_mask], j_right[right_down_mask]
     i_right_up, j_right_up = i_right[~right_down_mask], j_right[~right_down_mask]
 
-    def calculate_extremes(i_vals, j_vals, is_upper, i_ref):
+    def calculate_extremes(i_vals: range, j_vals: NDArray[np.int64],
+                           is_upper: bool, i_ref: NDArray[np.int64]) -> NDArray[np.float64]:
         """
         Helper function to find the extreme (uppermost/lowermost) pixel for a given i-coordinate.
         """
-        j_out = []
+        j_out: List[np.int64] = []
         for i in i_vals:
             j_pixels = j_vals[i_ref == i]
             if j_pixels.size > 0:
@@ -164,7 +168,11 @@ def vertical_center(i_list, j_list, intersection_margin=4):
                 j_out.append(np.nan)
         return np.array(j_out)
 
-    def compute_weighted_mean(i_vals, j_up, j_down, i_range, is_simple=False):
+    def compute_weighted_mean(i_vals:range,
+                              j_up:NDArray[np.float64], j_down:NDArray[np.float64], 
+                              i_range:range,
+                              is_simple:bool=False
+                              )-> Tuple[List[np.float64], List[np.int64], float, float]:
         """
         Helper function to compute weighted mean for intersection or simple calculations.
         """
@@ -220,6 +228,110 @@ def vertical_center(i_list, j_list, intersection_margin=4):
 
     return vertical_center, i_location_list, mean_list
 
+
+class plotDrop:
+    def __init__(self, save_address:str ,
+                 dpi:int=100,
+                 cm_on_pixel:float=5/1280):
+        """
+        Class for visualizing the contact angle measurement results and saving the figure.
+        """
+        self.font_size=14
+        upscale_factor=3
+        self.conversion_factor=cm_on_pixel/upscale_factor
+
+        self.save_address = save_address
+        self.dpi = dpi
+
+        self.fig, self.ax = plt.subplots(figsize=(15, 10),dpi=dpi)  # type: ignore
+        self.ax.clear()
+    
+    def DropShape(self,i_list:NDArray[np.int64], j_list:NDArray[np.int64])->None:
+        # Drop shape
+        self.ax.plot(i_list, j_list, '.', color='black') # type: ignore
+
+    def Contact_angle_edge(self,
+                           i_left:NDArray[np.int64], j_left:NDArray[np.int64],
+                           i_right:NDArray[np.int64], j_right:NDArray[np.int64])->None:
+        self.ax.plot(i_left,     j_left,         '.', color='red', markersize=12) # type: ignore
+        self.ax.plot(i_right,    j_right,        '.', color='red', markersize=12) # type: ignore
+
+    def Poly_fit(self,
+                 j_poly_left:NDArray[np.float64],  i_poly_left:NDArray[np.float64],
+                 j_poly_right:NDArray[np.float64], i_poly_right:NDArray[np.float64])->None:
+        self.ax.plot(i_poly_left,        j_poly_left, '--', color='yellow', linewidth=4) # type: ignore
+        self.ax.plot(i_poly_right,       j_poly_right, '--', color='yellow', linewidth=4) # type: ignore
+
+    def Left_angle(self,
+                   left_angle_degree:float, m:float,
+                   i_poly_left:NDArray[np.float64], j_poly_left:NDArray[np.float64],
+                   )->None:
+        ax = self.ax
+        ax.plot([i_poly_left[0]+20, i_poly_left[0]], [j_poly_left[0], j_poly_left[0]], linewidth=3, color='blue') # type: ignore
+        ax.plot([i_poly_left[0], i_poly_left[0] + (1/m) * j_poly_left[20]],[j_poly_left[0], j_poly_left[20]], linewidth=3, color='blue') # type: ignore
+        ax.text(i_poly_left[0], j_poly_left[0] - 12, 'Advancing=' + str(round(left_angle_degree, 2)), color="blue", fontsize=self.font_size) # type: ignore
+
+    def Right_angle(self,
+                    right_angle_degree:float, m:float,
+                    i_poly_right:NDArray[np.float64], j_poly_right:NDArray[np.float64],
+                    )->None:
+        ax = self.ax
+        ax.plot([i_poly_right[0]-20, i_poly_right[0]], [j_poly_right[0], j_poly_right[0]], linewidth=3, color='blue') # type: ignore
+        ax.plot([i_poly_right[0], i_poly_right[0] - (1/m) * j_poly_right[20]], [j_poly_right[0], j_poly_right[20]], linewidth=3, color='blue') # type: ignore
+        ax.text(i_poly_right[0] - 65, j_poly_right[0] - 12, 'Receding=' + str(round(right_angle_degree, 2)), color="blue", fontsize=self.font_size) # type: ignore
+    
+    def Contact_line(self,
+                     x_cropped:int,
+                     j_poly_right:NDArray[np.float64], j_poly_left:NDArray[np.float64],
+                     left_angle_point:float, right_angle_point:float,
+                     contact_line_length:np.float64
+                     )->None:
+        ax = self.ax
+        ax.plot([(x_cropped * 3) + np.array(left_angle_point), (x_cropped * 3) + np.array(right_angle_point)], [0, 0], '--', linewidth=1, color='red') # type: ignore
+        ax.text(((x_cropped * 3) + np.array(right_angle_point) + (x_cropped * 3) + np.array(left_angle_point)) / 2 - 60, j_poly_right[0] - 12, 'Contact line length=' + str(round(contact_line_length, 3)) + ' cm', color="red", fontsize=self.font_size) # type: ignore
+            
+    def Center(self,
+               h_center:float,
+               j_list:NDArray[np.int64], i_list:NDArray[np.int64],
+               drop_height:np.float64,v_center:np.float64
+               )->None:
+        ax = self.ax
+        i_text_horizontal = (j_list[i_list == int(h_center)][0] + v_center) / 2
+        ax.plot([h_center, h_center], [min(j_list), j_list[i_list == int(h_center)][0]], '--', color='green') # type: ignore
+        ax.text(h_center + 5, i_text_horizontal, str(round(drop_height, 3)) + ' cm', color="green", fontsize=self.font_size) # type: ignore
+
+    def Middle_line(self,
+                    i_middle_line:NDArray[np.float64], j_middle_line:NDArray[np.float64],
+                    middle_angle_degree:Tuple[np.float64,np.float64],
+                    i2_middle_line:np.float64
+                    )->None:
+        ax = self.ax
+        ax.plot([i_middle_line[-1], i2_middle_line], [0, j_middle_line[i_middle_line == i2_middle_line][0]], '-', color='black') # type: ignore
+        ax.text(i2_middle_line - 35, j_middle_line[i_middle_line == i2_middle_line][0] - 20, 'Angle=' + str(round(middle_angle_degree[0], 2)), color="black", fontsize=self.font_size) # type: ignore
+
+    def Vertical_center(self,i_list:NDArray[np.int64], j_list:NDArray[np.int64],
+                        v_center:np.float64, drop_length:np.float64, i_text_vertical:np.float64
+                        ) ->None:
+        ax = self.ax
+        ax.plot([min(i_list[j_list == int(v_center)]), max(i_list[j_list == int(v_center)])], [v_center, v_center], '--', color='green') # type: ignore
+        ax.text(i_text_vertical, v_center + 5, str(round(drop_length, 3)) + ' cm', color="green", fontsize=self.font_size) # type: ignore
+
+    def Center_point(self,
+                     h_center:int, v_center:int
+                     )->None:
+        ax = self.ax
+        ax.plot(h_center, v_center, '.', color='blue', markersize=14) # type: ignore
+        ax.text(h_center + 5, v_center + 5, 'Center= [x=' + str(round(h_center, 3)) + ' cm, y=' + str(round(v_center, 3)) + ' cm]', color="blue", fontsize=self.font_size) # type: ignore
+
+    def Save(self)->None:
+        ax = self.ax
+         # ax.axis('equal')
+        ax.set_ylim(-30, 300)  # Set y limit as requested
+        ax.tick_params(axis='both', labelsize=20) # type: ignore
+        plt.tight_layout()
+        self.fig.savefig(self.save_address,dpi=self.dpi) # type: ignore
+        plt.close(self.fig) # type: ignore
+
 def visualize(save_address:str , 
               i_list:NDArray[np.int64],                 j_list:NDArray[np.int64],
               i_left:NDArray[np.int64],                 j_left:NDArray[np.int64],
@@ -236,57 +348,36 @@ def visualize(save_address:str ,
     Author:
         - Sajjad Shumaly
     """
+    _locPlotter = plotDrop(save_address=save_address, dpi=dpi, cm_on_pixel=cm_on_pixel)
 
-    font_size=14
-    upscale_factor=3
-    conversion_factor=cm_on_pixel/upscale_factor
+    _locPlotter.DropShape(i_list, j_list)
+    _locPlotter.Contact_angle_edge(i_left, j_left, i_right, j_right)
+    _locPlotter.Poly_fit(j_poly_left, i_poly_left, j_poly_right, i_poly_right)
 
-    fig, ax = plt.subplots(figsize=(15, 10),dpi=dpi)  # Use subplot
-    ax.clear()
-
-    # Drop shape
-    ax.plot(i_list, j_list, '.', color='black')
-
-    # Contact angle edge
-    ax.plot(i_left,     j_left,         '.', color='red', markersize=12)
-    ax.plot(i_right,    j_right,        '.', color='red', markersize=12)
-
-    # Poly fit
-    ax.plot(i_poly_left,        j_poly_left, '--', color='yellow', linewidth=4)
-    ax.plot(i_poly_right,       j_poly_right, '--', color='yellow', linewidth=4)
 
     # Left angle
     left_angle_degree, left_angle_point = left_angle(i_poly_left_rotated, j_poly_left_rotated, 1)
-
-    ax.plot([i_poly_left[0]+20, i_poly_left[0]], [j_poly_left[0], j_poly_left[0]], linewidth=3, color='blue')
-
     m = np.tan(left_angle_degree * (np.pi / 180))
-
-    ax.plot([i_poly_left[0], i_poly_left[0] + (1/m) * j_poly_left[20]], [j_poly_left[0], j_poly_left[20]], linewidth=3, color='blue')
-    ax.text(i_poly_left[0], j_poly_left[0] - 12, 'Advancing=' + str(round(left_angle_degree, 2)), color="blue", fontsize=font_size)
+    _locPlotter.Left_angle(left_angle_degree, m, i_poly_left, j_poly_left)
 
     # Right angle
     right_angle_degree, right_angle_point = right_angle(i_poly_right_rotated, j_poly_right_rotated, 1)
-    ax.plot([i_poly_right[0]-20, i_poly_right[0]], [j_poly_right[0], j_poly_right[0]], linewidth=3, color='blue')
     m = np.tan(right_angle_degree * (np.pi / 180))
-    ax.plot([i_poly_right[0], i_poly_right[0] - (1/m) * j_poly_right[20]], [j_poly_right[0], j_poly_right[20]], linewidth=3, color='blue')
-    ax.text(i_poly_right[0] - 65, j_poly_right[0] - 12, 'Receding=' + str(round(right_angle_degree, 2)), color="blue", fontsize=font_size)
+    _locPlotter.Right_angle(right_angle_degree, m, i_poly_right, j_poly_right)
 
     # Contact line
-    contact_line_length = (right_angle_point - left_angle_point) * conversion_factor
-    ax.plot([(x_cropped * 3) + np.array(left_angle_point), (x_cropped * 3) + np.array(right_angle_point)], [0, 0], '--', linewidth=1, color='red')
-    ax.text(((x_cropped * 3) + np.array(right_angle_point) + (x_cropped * 3) + np.array(left_angle_point)) / 2 - 60, j_poly_right[0] - 12,
-            'Contact line length=' + str(round(contact_line_length, 3)) + ' cm', color="red", fontsize=font_size)
-    right_angle_point = ((1280) * 3 - right_angle_point - (x_cropped) * 3) * conversion_factor
-    left_angle_point = ((1280) * 3 - left_angle_point + -(x_cropped) * 3) * conversion_factor
-
+    contact_line_length = (right_angle_point - left_angle_point) * _locPlotter.conversion_factor
+    _locPlotter.Contact_line(x_cropped, j_poly_right, j_poly_left, left_angle_point, right_angle_point, contact_line_length)
+    right_angle_point = ((1280) * 3 - right_angle_point - (x_cropped) * 3) * _locPlotter.conversion_factor
+    left_angle_point = ((1280) * 3 - left_angle_point + -(x_cropped) * 3) * _locPlotter.conversion_factor
+    
     # Centers
     v_center, *_ = vertical_center(i_list, j_list)
     h_center, i_mean, j_mean = horizontal_center(i_list, j_list)
-    ax.plot([h_center, h_center], [min(j_list), j_list[i_list == int(h_center)][0]], '--', color='green')
-    drop_height = abs(min(j_list) - j_list[i_list == int(h_center)][0]) * conversion_factor
-    i_text_horizontal = (j_list[i_list == int(h_center)][0] + v_center) / 2
-    ax.text(h_center + 5, i_text_horizontal, str(round(drop_height, 3)) + ' cm', color="green", fontsize=font_size)
+    drop_height = abs(min(j_list) - j_list[i_list == int(h_center)][0]) * _locPlotter.conversion_factor
+    
+    _locPlotter.Center(h_center, j_list, i_list, drop_height, v_center)
+
 
     # Middle line
     i_middle_line, j_middle_line    = poly_fitting(i_mean, j_mean, polynomial_degree=1, line_space=100)
@@ -295,30 +386,21 @@ def visualize(save_address:str ,
         i_middle_line, j_middle_line = poly_fitting(i_mean, j_mean, polynomial_degree=1, line_space=100)
         middle_angle_degree = middle_angle(i_middle_line, j_middle_line)
         i2_middle_line = min(i_middle_line[j_middle_line <= j_list[i_list == int(h_center)][0]])
-        ax.plot([i_middle_line[-1], i2_middle_line], [0, j_middle_line[i_middle_line == i2_middle_line][0]], '-', color='black')
-        ax.text(i2_middle_line - 35, j_middle_line[i_middle_line == i2_middle_line][0] - 20,
-                'Angle=' + str(round(middle_angle_degree[0], 2)), color="black", fontsize=font_size)
+        _locPlotter.Middle_line(i_middle_line, j_middle_line, middle_angle_degree, i2_middle_line)
 
     # Vertical center
     v_center, i_mean, j_mean = vertical_center(i_list, j_list)
-    ax.plot([min(i_list[j_list == int(v_center)]), max(i_list[j_list == int(v_center)])], [v_center, v_center], '--', color='green')
     i_text_vertical = (min(i_list) + h_center) / 2
-    drop_length = abs(min(i_list[j_list == int(v_center)]) - max(i_list[j_list == int(v_center)])) * conversion_factor
-    ax.text(i_text_vertical, v_center + 5, str(round(drop_length, 3)) + ' cm', color="green", fontsize=font_size)
+    drop_length = abs(min(i_list[j_list == int(v_center)]) - max(i_list[j_list == int(v_center)])) * _locPlotter.conversion_factor
+    _locPlotter.Vertical_center(i_list=i_list, j_list=j_list, v_center=v_center, drop_length=drop_length, i_text_vertical=i_text_vertical)
 
     # Center point
-    x_center = ((1280) * 3 - h_center) * conversion_factor
-    y_center = v_center * conversion_factor
-    ax.plot(h_center, v_center, '.', color='blue', markersize=14)
-    ax.text(h_center + 5, v_center + 5,
-            'Center= [x=' + str(round(x_center, 3)) + ' cm, y=' + str(round(y_center, 3)) + ' cm]', color="blue", fontsize=font_size)
+    x_center = ((1280) * 3 - h_center) * _locPlotter.conversion_factor
+    y_center = v_center * _locPlotter.conversion_factor
+    _locPlotter.Center_point(h_center, v_center)
 
-    # ax.axis('equal')
-    ax.set_ylim(-30, 300)  # Set y limit as requested
-    ax.tick_params(axis='both', labelsize=20)
-    plt.tight_layout()
-    fig.savefig(save_address,dpi=dpi)
-    plt.close(fig)
+    
+    _locPlotter.Save()
 
     return left_angle_degree, right_angle_degree, right_angle_point, left_angle_point, contact_line_length, x_center, y_center, middle_angle_degree[0]
 

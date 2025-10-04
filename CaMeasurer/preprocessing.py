@@ -62,12 +62,3 @@ def check_and_save_color_images(folder_path:str):
                 # Overwrite the original file with the color version
                 cv2.imwrite(file_path, img_color)
                 print(f"Saved color image: {filename}")
-
-
-def make_folders(address:str) -> None:
-    if os.path.exists(address):
-        shutil.rmtree(address)
-        os.makedirs(address)
-    else:
-        os.makedirs(address)
-    
