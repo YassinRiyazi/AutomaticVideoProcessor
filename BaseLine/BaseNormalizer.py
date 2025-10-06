@@ -15,12 +15,11 @@ import  matplotlib
 import  multiprocessing
  
 import  numpy               as      np
-from multiprocessing        import  pool
 matplotlib.use('Agg')  # For file output only, no GUI
 import  matplotlib.pyplot as plt
-from    skimage.measure     import  ransac, LineModelND
+from    skimage.measure     import  ransac, LineModelND # type: ignore
 
-from numpy.typing import ArrayLike,NDArray
+from numpy.typing import NDArray
 from typing import Tuple, TypeAlias
 ImageSize: TypeAlias = Tuple[int, int]
 
@@ -28,7 +27,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import BaseUtils
 
-def fit_and_rotate_image(image_path: os.PathLike[str],
+def fit_and_rotate_image(image_path: str,
                          results: bool = True,
                          focus_ratio: float = 0.3
                          ) -> tuple[float, ImageSize, NDArray[np.uint8]]:
@@ -69,7 +68,7 @@ def fit_and_rotate_image(image_path: os.PathLike[str],
     points = np.column_stack((x_indices, y_indices))
 
     # Fit robust line using RANSAC
-    model, inliers = ransac(
+    model, inliers = ransac( # type: ignore
         points, LineModelND,
         min_samples=2,
         residual_threshold=1.0,  # tighter fit
@@ -78,15 +77,15 @@ def fit_and_rotate_image(image_path: os.PathLike[str],
 
     # Compute line endpoints
     line_x = np.array([min(x_indices), max(x_indices)])
-    line_y = model.predict_y(line_x)
+    line_y = model.predict_y(line_x)# type: ignore
 
     # Adjust for cropped region
-    line_y += (h - focus_height)
+    line_y += (h - focus_height)# type: ignore
 
     # Compute angle
     dx = line_x[1] - line_x[0]
-    dy = line_y[1] - line_y[0]
-    angle = np.degrees(np.arctan2(dy, dx))
+    dy = line_y[1] - line_y[0]# type: ignore
+    angle = np.degrees(np.arctan2(dy, dx))# type: ignore
 
     # Rotate around bottom-center to preserve surface alignment
     center = (w // 2, h - 1)
@@ -94,7 +93,7 @@ def fit_and_rotate_image(image_path: os.PathLike[str],
     rotated_image = cv2.warpAffine(image, rotation_matrix, (w, h),
                                    flags=cv2.INTER_LINEAR,
                                    borderMode=cv2.BORDER_CONSTANT,
-                                   borderValue=(255,))
+                                   borderValue=(255,)).astype(np.uint8)
     # Optional visualization
     if results:
         
@@ -113,7 +112,7 @@ def fit_and_rotate_image(image_path: os.PathLike[str],
 
     return angle, image.shape, rotated_image
 
-def fit_image(image: cv2.Mat, black_base_line=10):
+def fit_image(image: NDArray[np.uint8], black_base_line:int=10) -> int:
     """
     Fits a line to the detected edges in a grayscale image using RANSAC, and computes 
     the vertical offset from the fitted line to a given black baseline.
@@ -133,24 +132,24 @@ def fit_image(image: cv2.Mat, black_base_line=10):
     points = np.column_stack((x_indices, y_indices))  # Shape: (N, 2)
 
     # Fit a robust line to the edge points using RANSAC (to handle outliers)
-    model, inliers = ransac(points, LineModelND, min_samples=2,
+    model, inliers = ransac(points, LineModelND, min_samples=2,  # type: ignore# type: ignore
                             residual_threshold=2, max_trials=1000)
     
     # Define X-range of the line (min to max X in the edge points)
     line_x = np.array([min(x_indices), max(x_indices)])
     
     # Predict corresponding Y values from the fitted line model
-    line_y = model.predict_y(line_x)
+    line_y = model.predict_y(line_x)# type: ignore
     
     # Compute angle of the line (not used in return, but may be useful for debugging)
     dx = line_x[1] - line_x[0]
-    dy = line_y[1] - line_y[0]
-    angle = np.degrees(np.arctan2(dy, dx))  # Angle of the fitted line in degrees
+    dy = line_y[1] - line_y[0]# type: ignore
+    angle = np.degrees(np.arctan2(dy, dx))  # Angle of the fitted line in degrees# type: ignore
 
     # Compute average height of the line and subtract the baseline
-    return int((line_y[1] + line_y[0]) // 2) - black_base_line
+    return int((line_y[1] + line_y[0]) // 2) - black_base_line# type: ignore
 
-def line_finder(image:cv2.Mat, rotation_matrix:cv2.Mat, black_base_line:int = 10) -> int:
+def line_finder(image_address:str, rotation_matrix:cv2.Mat, black_base_line:int = 10) -> int:
     """
     Finds the height of the line in the image after applying a rotation matrix.
     Args:
@@ -160,21 +159,23 @@ def line_finder(image:cv2.Mat, rotation_matrix:cv2.Mat, black_base_line:int = 10
     Returns:
         int: Height of the line in the rotated image.
     """
-    image = cv2.imread(image, cv2.IMREAD_GRAYSCALE)
+    image = cv2.imread(image_address, cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        raise FileNotFoundError("Image not found or unable to load.")
     (h, w) = image.shape[:2]
     # rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
     rotated_image = cv2.warpAffine(image, rotation_matrix, (w, h),
                                    flags=cv2.INTER_LINEAR,
                                    borderMode=cv2.BORDER_CONSTANT,
                                    borderValue=255)
-    cropped_height = fit_image(rotated_image, black_base_line=black_base_line)
+    cropped_height = fit_image(rotated_image.astype(np.uint8), black_base_line=black_base_line)
     return cropped_height
 
 def process_image(filepath: str, 
-                  rotation_matrix: np.ndarray,
-                  cropped_height,
-                  output_path: str = None,
-                  kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13))) -> None:
+                  rotation_matrix: NDArray[np.float64],
+                  cropped_height:int,
+                  output_path: str|None = None,
+                  ) -> None:
     """
     Processes an image by applying a rotation matrix and saving the result.
     Args:
@@ -187,6 +188,8 @@ def process_image(filepath: str,
     <img src="https://raw.githubusercontent.com/YassinRiyazi/Main/refs/heads/main/src/PyThon/ContactAngle/BaseLine/doc/rotationweirdartifacts.png" alt="Italian Trulli">
     """
     image = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        raise FileNotFoundError(f"Image not found or unable to load: {filepath}")
     (w, h) = image.shape[:2]
     if output_path is None:
         output_path = os.path.dirname(filepath).replace("frames", "frames_rotated")
@@ -194,34 +197,37 @@ def process_image(filepath: str,
             os.makedirs(output_path, exist_ok=True)
 
     # rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
-    rotated_image   = cv2.warpAffine(image, rotation_matrix, (h, w ),
-                                     flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=255)
+    rotated_image   = cv2.warpAffine(image, rotation_matrix, (h, w ),flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=255) # type: ignore
     rotated_image[cropped_height+10:, :] = 0  # Set the top part of the image to black
 
-    # TODO: normalize bottom row
-    _rotated_image = bottom_row_unifierGRAY(rotated_image, target_height=w)
+    # TODO: normalize bottom row [Done]
+    _rotated_image = bottom_row_unifierGRAY(rotated_image.astype(np.uint8), target_height=w)
     
-     ## Close operation fills small dark holes # Kernel size depends on spot size
+    # Close operation fills small dark holes # Kernel size depends on spot size
+    # kernel:NDArray[np.uint8] = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13)).astype(np.uint8)
     # _rotated_image = cv2.morphologyEx(_rotated_image, cv2.MORPH_CLOSE, kernel)
     cv2.imwrite(os.path.join(output_path, os.path.basename(filepath)), _rotated_image)
 
-def folderBaseLineNormalizer(experiment: os.PathLike[str]|str, 
-                             output_path: os.PathLike[str] | None = None):
+def folderBaseLineNormalizer(experiment: str, 
+                             output_path: str | None = None):
         files = BaseUtils.ImageLister(experiment)
 
-        output_path = os.path.join(experiment, BaseUtils.config["rotated_frames_folder"])
+        output_path = os.path.join(experiment, str(BaseUtils.config["rotated_frames_folder"]))
 
-
-        if len(glob.glob(os.path.join(output_path, BaseUtils.config["image_extension"]))) == len(files):
+        if len(glob.glob(os.path.join(output_path, str(BaseUtils.config["image_extension"])))) == len(files):
             pass
         else:
             if not os.path.isdir(output_path):
                 os.makedirs(output_path, exist_ok=True)
         
         image = cv2.imread(os.path.join(experiment, files[2]), cv2.IMREAD_GRAYSCALE)
+        if image is None:
+            raise FileNotFoundError(f"Image not found or unable to load: {os.path.join(experiment, files[2])}")
         (h, w) = image.shape[:2]
         center = (w // 2, h // 2)
         angle,_shape, rotated_image = fit_and_rotate_image(os.path.join(experiment, files[2]),results=True)
+        del _shape, rotated_image
+        
         rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
 
         with multiprocessing.Pool(processes=int(multiprocessing.cpu_count()*0.75)) as pool: #
@@ -232,7 +238,8 @@ def folderBaseLineNormalizer(experiment: os.PathLike[str]|str,
         with multiprocessing.Pool(processes=int(multiprocessing.cpu_count() * 0.75)) as pool:
             pool.starmap(process_image, [(file, rotation_matrix,cropped_height) for file in files])
 
-def bottom_row_unifierGRAY(image:cv2.Mat,target_height=130) -> cv2.Mat:
+def bottom_row_unifierGRAY(image:NDArray[np.uint8],target_height:int,
+                           pad_bottom:int = 5) -> NDArray[np.uint8]:
     """
     Unifies the bottom rows of an image to a specified target height.
     args:
@@ -250,14 +257,18 @@ def bottom_row_unifierGRAY(image:cv2.Mat,target_height=130) -> cv2.Mat:
     resized_image   = image[:,::50]
     vv              = resized_image.sum(axis=1)
     height = len(vv)
-
+    
+    i = None
     for i in range(height-1, 0, -1):
         if vv[i] > 2:
             i -= 1
             break
+    if i is None:
+        raise ValueError("No non-zero rows found in the image.")
+    
     padding_top = target_height - i
-    image = cv2.copyMakeBorder(image[:i-1,:], padding_top, 0, 0, 0, cv2.BORDER_CONSTANT, None, value = 255)
-    image = cv2.copyMakeBorder(image[:,:], 0, 5, 0, 0, cv2.BORDER_CONSTANT, None, value = 0)
+    image = cv2.copyMakeBorder(image[:i-1,:], padding_top, 0, 0, 0, cv2.BORDER_CONSTANT, None, value = 255) # type: ignore
+    image = cv2.copyMakeBorder(image[:,:], 0, pad_bottom, 0, 0, cv2.BORDER_CONSTANT, None, value = 0)# type: ignore
 
     return image
 

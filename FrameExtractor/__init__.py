@@ -9,6 +9,7 @@
     Components:
         + Frame Generator (Folder Address:str|os.pathlike[str]): Void [Checks frames are existing]
         + Frame B&W maker (Folder Address:str|os.pathlike[str]): Void [Checks and make frames B&W]
+        + Bottom_row_checker (Folder Address:str|os.pathlike[str]): Void [Checks bottom row is not white]
         + Frame Health Checker (Folder Address:str|os.pathlike[str]): Void [Checks frames are existing, non zero size, readable]
         + Forward (Folder Address:str|os.pathlike[str]) : Void [Run all above for a selected folder]
 
@@ -25,10 +26,11 @@
         if frames are not sequentially indexed, an error will be raised
         ffmpeg is installed and added to the system path
 """
-import re
+# import re
 import os
 import glob
 import colorama
+import numpy as np
 from PIL import Image
 if __name__ == "__main__":
     from Video2Jpg import ffmpeg_frame_extractor, init
@@ -79,8 +81,6 @@ class FrameExtractor:
             health_check=health_check
         )
         return 1
-
-    
     
     def BandGMaker(self, FolderAddress: str):
         """
@@ -114,32 +114,30 @@ class FrameExtractor:
                 print(colorama.Fore.RED + f"Zero-size image file detected and removed: {img_file}" + colorama.Style.RESET_ALL)
                 os.remove(img_file)
 
-    # def FileIndexChecker(self, FolderAddress: str):
-    #     """
-    #     Checking images are sequentially indexed without missing numbers
-    #     """
-    #     images = BaseUtils.ImageLister(FolderAddress=FolderAddress)
+    def Bottom_row_checker(self, FolderAddress: str):
+        images = BaseUtils.ImageLister(FolderAddress=FolderAddress)    
 
-    #     # extracting image index from filename with regex and if there is missing index raise error
-    #     image_indices = [int(re.search(r'(\d+)', os.path.basename(img_file)).group(1)) for img_file in images] # type: ignore
-    #     for i, _ in enumerate(images, start=image_indices[0]):    
-    #         if i != image_indices[i-1]:
-    #             raise ValueError(colorama.Fore.RED + f"Missing image index detected: {i}" + colorama.Style.RESET_ALL)
+        for img_file in (images[::4]):
+            img = Image.open(img_file)
+            img_array = np.array(img)
+            bottom_row = img_array[-1, :].mean(axis=-1)  # Average across color channels if present
+            if bottom_row > 100:  # Threshold for "mostly white"
+                raise ValueError(colorama.Fore.RED + f"The sample line is not visible; thus, baseline detection will fail for: {img_file}" + colorama.Style.RESET_ALL)
 
     def Forward(self,
                 FolderAddress: str,
                 fps: int = int(BaseUtils.config['frame_rate'])):
         # showing progress with tqdm and updating in place
-        _ = self.extract_frames(FolderAddress=FolderAddress,
-                                fps=fps)
+        _ = self.extract_frames(FolderAddress=FolderAddress,fps=fps)
         self.BandGMaker(FolderAddress=FolderAddress)
+        self.Bottom_row_checker(FolderAddress=FolderAddress)
         self.HealthChecker(FolderAddress=FolderAddress)
         BaseUtils.FileIndexChecker(FolderAddress=FolderAddress)
 
 
 if __name__ == "__main__":
     fe = FrameExtractor()
-    fe.Forward(
-        FolderAddress=r"D:\Videos\S1_30per_T1_C001H001S0001",
-        fps=30,
+    fe.Bottom_row_checker(
+        FolderAddress=r"/media/Dont/Teflon-AVP/280/S3-SNr3.02_D/T052_02_12.306287095218",#/media/Dont/Teflon-AVP/280/S3-SNr3.01_D/T111_01_2.416221423374
+        
     )

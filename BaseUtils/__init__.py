@@ -10,10 +10,10 @@ import colorama
 
 if __name__ == "__main__":
     from config import config
-    from drop_detection import DropDetection_YOLO, DropDetection_SUM, DropDetection_SUM_YOLO
+    from drop_detection import DropDetection_YOLO, DropDetection_SUM, DropDetection_SUM_YOLO # type: ignore
 else:
     from .config import config
-    from .drop_detection import DropDetection_YOLO, DropDetection_SUM, DropDetection_SUM_YOLO
+    from .drop_detection import DropDetection_YOLO, DropDetection_SUM, DropDetection_SUM_YOLO   # type: ignore
 
 
 def ImageLister(FolderAddress: str,
@@ -46,9 +46,6 @@ def FileIndexChecker( FolderAddress: str,
     for i, _ in enumerate(images, start=image_indices[0]):    
         if i != image_indices[i-1]:
             raise ValueError(colorama.Fore.RED + f"Missing image index detected: {i}" + colorama.Style.RESET_ALL)
-
-
-
 
 if __name__ == "__main__":
     # Example usage

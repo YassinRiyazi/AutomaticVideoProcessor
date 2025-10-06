@@ -4,12 +4,12 @@
     Description: Detects drops in video frames using YOLO.
 """
 import os
-import cv2
 import colorama
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
 from typing import List, Tuple, TypeAlias
 listImages: TypeAlias = List[str]
+WalkerData: TypeAlias = Tuple[int, int, listImages, int]
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -59,7 +59,7 @@ def delInRange(_start: int, _end: int, _list_addresses: listImages, max_threads:
     
     return None
 
-def detect_and_filter_batch(index_range: Tuple[int, int, listImages, int],
+def detect_and_filter_batch(index_range: WalkerData,
                             detector = BaseUtils.DropDetection_SUM_YOLO) -> None:
     """
     Worker function for a process that detects drops in a batch of frames using YOLO.
@@ -87,6 +87,7 @@ def detect_and_filter_batch(index_range: Tuple[int, int, listImages, int],
         # Run YOLO detection on both frames
         result1, has_drop1 = in_detector.detect_drops(frame1)
         result2, has_drop2 = in_detector.detect_drops(frame2)
+        del result1, result2
 
         # If neither frame has drops, delete the entire range
         if not has_drop1 and not has_drop2:
@@ -121,7 +122,7 @@ def Walker(image_folder: str,
     chunk_size      = len(total_indices) // num_workers + 1
 
     # Prepare workload for each worker
-    tasks:List[Tuple[int, int, listImages, int, float]] = []
+    tasks:List[WalkerData] = []
     for w in range(num_workers):
         start = w * chunk_size
         end = min((w + 1) * chunk_size, len(total_indices))

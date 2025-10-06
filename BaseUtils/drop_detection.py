@@ -19,6 +19,12 @@ import  ultralytics
 import  numpy       as      np
 from    typing      import  List, Tuple, Optional
 
+# import tensorrt as trt
+
+# # Set logger to only show errors
+# TRT_LOGGER = trt.Logger(trt.Logger.ERROR)
+
+
 if __name__ == "__main__":
     from config import config
     from Detection.DropDetection_Sum import detectionV2,Main,DetectEdgeSave,DetectCropSave
@@ -52,29 +58,60 @@ class DropDetection():
 
 class DropDetection_YOLO(DropDetection):
     """
-    Placeholder for DropCounter class.
-    Actual implementation should be provided here.
+    Drop detection using a YOLO model.
     """
+
     def __init__(self) -> None:
-        addressYOLO = os.path.join(os.path.dirname(__file__),"Detection", "Weights", f"{config['yolo_name']}.engine")
+        addressYOLO = os.path.join(
+            os.path.dirname(__file__),
+            "Detection",
+            "Weights",
+            f"{config['yolo_name']}.engine"
+        )
         self.model = ultralytics.YOLO(addressYOLO, task='detect', verbose=False)
 
-    def detect_drops(self, frame_path: str, yolo_conf: Optional[float] = None) -> tuple[List, bool]:
+    def detect_drops(self, frame_path: str, yolo_conf: Optional[float] = None
+                     ) -> tuple[Optional[ultralytics.engine.results.Results], bool]:
         """
         Detect drops in the frame.
+
+        Args:
+            frame_path (str): Path to the frame image.
+            yolo_conf (float, optional): Confidence threshold. Defaults to config["yolo_conf"].
+
+        Returns:
+            tuple: (best_result, found) where best_result is the result object with the
+                   highest-confidence box (or None if no detection), and found is True/False.
         """
         if yolo_conf is None:
             yolo_conf = float(config["yolo_conf"])
+
         results = self.model(frame_path, conf=yolo_conf, device="cuda", verbose=False)
-        NumberOfObjects = len(results[0].boxes)
-        if NumberOfObjects > 1:
-            raise ValueError(colorama.Fore.RED + f"More than one object detected in {frame_path}. Expected only one." + colorama.Style.RESET_ALL)
-        return results, NumberOfObjects > 0
-    
+        boxes = results[0].boxes  # this is a Boxes object
+
+        if len(boxes) == 0:
+            return None, False
+
+        if len(boxes) > 1:
+            # TODO: Call logger here and state the number of boxes detected, plus the frame path, bounding box coordinates, and confidence scores.
+            confs = boxes.conf.cpu().numpy()
+            best_idx = int(np.argmax(confs))
+            best_box = boxes[best_idx]
+        else:
+            best_box = boxes[0]
+
+        return best_box, True
+
     @staticmethod
-    def horizontal_bound_extractor(result) -> Tuple[int,int]:
-        x1, _, x2, _ = np.array(result.boxes.xyxy[:, :].cpu().numpy(), dtype=np.float32)[0]
-        return (int(x1), int(x2))
+    def horizontal_bound_extractor(box) -> Tuple[int, int]:
+        """
+        Extract horizontal bounds (x1, x2) from a YOLO Boxes object or a single box.
+        """
+        if hasattr(box, "xyxy"):
+            x1, _, x2, _ = box.xyxy[0].cpu().numpy().astype(np.float32)
+            return int(x1), int(x2)
+        else:
+            raise TypeError("Input must be a YOLO Box with 'xyxy' attribute.")
         
 class DropDetection_SUM(DropDetection):
     """

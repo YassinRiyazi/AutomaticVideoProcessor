@@ -1,5 +1,6 @@
 {
     "cSpell.words": [
+        "arctan",
         "axvline",
         "cmap",
         "ffprobe",
@@ -12,10 +13,12 @@
         "markersize",
         "ndarray",
         "polyfit",
+        "ransac",
         "Riyazi",
         "Sajjad",
         "savgol",
         "Shumaly",
+        "skimage",
         "SROF",
         "Trulli",
         "xlabel",
