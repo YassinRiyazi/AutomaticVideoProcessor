@@ -45,10 +45,25 @@ def create_video_from_images(image_folder: str, output_video_path: str, extensio
         return False
 
 if __name__ == "__main__":
-    address = r"D:\Videos\S1_30per_T1_C001H001S0001\SR_edge"
-    output_video_path = os.path.join(address, "result_video.mp4")
+    # address = r"D:\Videos\S1_30per_T1_C001H001S0001\SR_edge"
+    # output_video_path = os.path.join(address, "result_video.mp4")
 
-    create_video_from_images(image_folder=address, 
-                             output_video_path=output_video_path,
-                             extension=".png",
-                             fps=30)
+    # create_video_from_images(image_folder=address, 
+    #                          output_video_path=output_video_path,
+    #                          extension=".png",
+    #                          fps=30)
+    import tqdm
+
+    Video_list = sorted(glob.glob("/media/Dont/Teflon-AVP/*/*/*"))
+    for _folder in tqdm.tqdm(Video_list):
+        shutil.rmtree(os.path.join(_folder, "frames"),          ignore_errors=True)
+        shutil.rmtree(os.path.join(_folder, "frames_rotated"),  ignore_errors=True)
+        shutil.rmtree(os.path.join(_folder, "databases"),       ignore_errors=True)
+        shutil.rmtree(os.path.join(_folder, "SR_edge"),         ignore_errors=True)
+        os.remove(os.path.join(_folder, 'error_log.txt')) if os.path.isfile(os.path.join(_folder, 'error_log.txt')) else None
+        os.remove(os.path.join(_folder, 'result.csv')) if os.path.isfile(os.path.join(_folder, 'result.csv')) else None
+        os.remove(os.path.join(_folder, 'result_video.mkv')) if os.path.isfile(os.path.join(_folder, 'result_video.mkv')) else None
+        
+        logs = glob.glob(os.path.join(_folder,'*.log'))
+        for log in logs:
+            os.remove(log)

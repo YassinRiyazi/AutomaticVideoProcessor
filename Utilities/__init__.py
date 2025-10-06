@@ -9,10 +9,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import BaseUtils
 
 if __name__ == "__main__":
-    from Detection_Sparse import Walker
+    from Detection_Sparse import  *
     from Detection_frameNormalizer import singleFolderDropNormalizer
 else:
-    from .Detection_Sparse import Walker
+    from .Detection_Sparse import  *
     from .Detection_frameNormalizer import singleFolderDropNormalizer
 
 image_folder = r"D:\Videos\S1_30per_T1_C001H001S0001"

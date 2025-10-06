@@ -5,7 +5,7 @@ import  tqdm
 import  traceback
 import  pandas          as  pd
 import  numpy           as  np
-
+from   numpy.typing   import  NDArray
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import BaseUtils
@@ -13,14 +13,15 @@ import BaseUtils
 if __name__ == "__main__":
     from    criteria_definition     import *
     from    superResolution         import initiation
-    from    edgeDetection           import *
+    from    BaseUtils.Detection.edgeDetection           import *
     from    processing              import *
     from    visualization           import visualize
     from    main                    import *
 else:
+
     from    .criteria_definition    import *
     from    .superResolution        import initiation
-    from    .edgeDetection          import *
+    from    BaseUtils.Detection.edgeDetection          import *
     from    .processing             import *
     from    .visualization          import visualize
     from    .main                   import *
@@ -277,6 +278,132 @@ def processes_mp(shared_address: str, num_workers: int = 15):
     ]
     df_out.to_csv(os.path.join(shared_address, 'result.csv'), index=False)
 
+
+def _barrier_func():
+    """Used to synchronize workers without sending a lambda (picklable)."""
+    return None
+
+
+def _update_worker_globals(args):
+    """Executed inside each worker to update global variables between runs."""
+    global df, address, kernel, num_px_ratio, cm_on_pixel_ratio, fps
+    df, address, kernel, num_px_ratio, cm_on_pixel_ratio, fps = args
+    return True
+
+
+class processes_mp_shared:
+    """
+    Multiprocessing drop analysis with persistent YOLO models,
+    but re-updates all per-run variables (address, df, etc.) each call.
+    """
+
+    def __init__(self, num_workers: int = 15):
+        self.num_workers = num_workers
+        self._pool = None
+        self._worker_func = None
+
+    def _ensure_pool(self):
+        """Create the pool if not already created."""
+        if self._pool is None:
+            print("🚀 Creating persistent worker pool (YOLO initialized once per worker)...")
+            self._pool = Pool(processes=self.num_workers, initializer=_init_worker, initargs=(None, None, None, None, None, None))
+        else:
+            # print("♻️ Reusing existing worker pool (YOLO already loaded).")
+            pass
+
+    def _update_pool_globals(self, shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps):
+        """Send new global parameters to all workers."""
+        # print(f"🔄 Updating worker globals for {shared_address}...")
+        args = (shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
+        # Send updates to all workers
+        list(self._pool.map(_update_worker_globals, [args] * self.num_workers))
+
+    def run(self, shared_address: str):
+        """
+        Run one processing batch.
+        Keeps YOLO loaded across runs, updates per-run globals in all workers.
+        """
+        # if (os.path.isfile(os.path.join(shared_address, 'SR_result', 'result.csv')) and
+        #     os.path.isfile(os.path.join(shared_address, 'SR_edge', 'result.mp4'))):
+        #     raise Exception("processes already done")
+
+        shared_df = pd.read_csv(os.path.join(shared_address, str(BaseUtils.config['databases_folder']), 'detections.csv'))
+        name_files = BaseUtils.ImageLister(shared_address, str(BaseUtils.config['databases_folder']))
+
+        os.makedirs(os.path.join(shared_address, 'SR_edge'), exist_ok=True)
+
+        fps = BaseUtils.config['fps_experiment']
+        cm_on_pixel_ratio = 0.0039062
+        num_px_ratio = (0.0039062) / cm_on_pixel_ratio
+        kernel = np.ones((5, 5), np.uint8)
+
+        # Step 1: ensure pool exists
+        self._ensure_pool()
+
+        # Step 2: update globals in all workers
+        self._update_pool_globals(shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
+        shared_df = pd.read_csv(os.path.join(shared_address, BaseUtils.config['databases_folder'], 'detections.csv'))
+        name_files = BaseUtils.ImageLister(shared_address, str(BaseUtils.config['databases_folder']))
+        self._update_pool_globals(shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
+
+        # Step 3: define worker func for this run
+        worker_func = partial(process_one_file, name_files=name_files)
+
+        # Step 4: run processing
+        results = []
+        for res in tqdm.tqdm(self._pool.imap_unordered(worker_func, range(len(name_files))),
+                             total=len(name_files), desc=f"Processing {shared_address}"):
+            if res is not None:
+                results.append(res)
+
+        # Step 5: wait for all workers to finish
+        self._pool.apply(_barrier_func)
+
+        # Step 6: aggregate results
+        if not results:
+            raise RuntimeError("No valid results were produced. Check error_log.txt")
+
+        results = sorted(results, key=lambda r: r["file"])
+
+        processed_number_list = [r["file"] for r in results]
+        adv_list = [r["adv"] for r in results]
+        rec_list = [r["rec"] for r in results]
+        contact_line_length_list = [r["contact_line_length"] for r in results]
+        x_center_list = [r["x_center"] for r in results]
+        y_center_list = [r["y_center"] for r in results]
+        middle_angle_degree_list = [r["middle_angle_degree"] for r in results]
+
+        vel = np.diff(x_center_list) * fps
+
+        df_out = pd.DataFrame({
+            "file number": processed_number_list[:-1],
+            "time (s)": np.arange(0, len(vel)) / fps,
+            "x_center (cm)": x_center_list[:-1],
+            "adv (degree)": adv_list[:-1],
+            "rec (degree)": rec_list[:-1],
+            "contact_line_length (cm)": contact_line_length_list[:-1],
+            "y_center (cm)": y_center_list[:-1],
+            "middle_angle_degree (degree)": middle_angle_degree_list[:-1],
+            "velocity (cm/s)": vel,
+        })
+
+        df_out.to_csv(os.path.join(shared_address, "result.csv"), index=False)
+        # print(f"✅ Finished {len(results)} files for {shared_address}")
+        return df_out
+
+    def close(self):
+        """Gracefully close and clean up the persistent pool."""
+        if self._pool is not None:
+            print("🧹 Closing persistent worker pool...")
+            try:
+                self._pool.close()
+                self._pool.join()
+            except Exception:
+                self._pool.terminate()
+            finally:
+                self._pool = None
+                self._worker_func = None
+                print("✅ Pool closed successfully.")
 
 def single (_address: str, file_number: int, name_files: list[str]):
     global model, kernel, num_px_ratio, df, address, cm_on_pixel_ratio, fps

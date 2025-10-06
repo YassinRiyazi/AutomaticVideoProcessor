@@ -15,7 +15,7 @@ from typing import Tuple
 if __name__ == "__main__":
     from criteria_definition   import *
     from superResolution         import upscale_image
-    from edgeDetection           import edge_extraction, Advancing_pixel_selection_Euclidean, Receding_pixel_selection_Euclidean
+    from BaseUtils.Detection.edgeDetection           import edge_extraction, Advancing_pixel_selection_Euclidean, Receding_pixel_selection_Euclidean
     from processing              import poly_fitting
     from criteria_definition    import right_angle, left_angle
 else:
@@ -24,7 +24,7 @@ else:
 
     from criteria_definition   import *
     from superResolution         import upscale_image
-    from edgeDetection           import edge_extraction, Advancing_pixel_selection_Euclidean, Receding_pixel_selection_Euclidean
+    from BaseUtils.Detection.edgeDetection           import edge_extraction, Advancing_pixel_selection_Euclidean, Receding_pixel_selection_Euclidean
     from processing              import poly_fitting
     from criteria_definition    import right_angle, left_angle
 
@@ -99,6 +99,9 @@ def base_function_process(df: pd.DataFrame,
         Removing super-resolution from this section
     """
     # 1. Loading data
+    if os.path.isfile(os.path.join(ad,name_files[file_number])) is False:
+        raise FileNotFoundError(f"Image file not found: {os.path.join(ad, name_files[file_number])}")
+    
     just_drop       = cv2.imread(os.path.join(ad,name_files[file_number]))
     if just_drop is None:
         raise FileNotFoundError(f"Image not found or unable to read: {os.path.join(ad, name_files[file_number])}")

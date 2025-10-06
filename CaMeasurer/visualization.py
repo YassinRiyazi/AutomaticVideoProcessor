@@ -13,7 +13,7 @@ if __name__ == "__main__":
     import  cv2
     from    criteria_definition import left_angle, right_angle, middle_angle
     from    processing import poly_fitting
-    from    edgeDetection import *
+    from    BaseUtils.Detection.edgeDetection import *
 
 else:
     import os,sys
@@ -321,7 +321,7 @@ class plotDrop:
                      )->None:
         ax = self.ax
         ax.plot(h_center, v_center, '.', color='blue', markersize=14) # type: ignore
-        ax.text(h_center + 5, v_center + 5, 'Center= [x=' + str(round(h_center, 3)) + ' cm, y=' + str(round(v_center, 3)) + ' cm]', color="blue", fontsize=self.font_size) # type: ignore
+        ax.text(h_center + 5, v_center + 5, 'Center= [x=' + str(round(h_center, 3)) + ' mm, y=' + str(round(v_center, 3)) + ' mm]', color="blue", fontsize=self.font_size) # type: ignore
 
     def Save(self)->None:
         ax = self.ax
