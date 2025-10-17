@@ -88,13 +88,14 @@ def edge_extraction(gray:NDArray[np.int8],
 
     i_list, j_list  = zip(*coords)
         
-    j_list          = [height - 1 - j for j in j_list]  # flip y-axis
+    j_list = [height - 1 - j for j in j_list]  # flip y-axis
 
     return np.array(i_list), np.array(j_list)
 
 def Advancing_pixel_selection_Euclidean(i_array: List[int]|NDArray[np.int64],
                                         j_array: List[int]|NDArray[np.int64],
-                                        left_number_of_pixels:int=150) -> Tuple[List[int], List[int]]:
+                                        left_number_of_pixels:int=150
+                                        ) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
     Selects pixels from the advancing (left) side of a droplet, sorted by 2D Euclidean distance
     from the leftmost point, returning specified number of pixels.
@@ -135,15 +136,16 @@ def Advancing_pixel_selection_Euclidean(i_array: List[int]|NDArray[np.int64],
     # Get indices of sorted distances
     sorted_indices = np.argsort(distances)[:left_number_of_pixels]
 
-    # Select pixels
-    selected_i = i_array[sorted_indices].tolist()
-    selected_j = j_array[sorted_indices].tolist()
+    # # Select pixels
+    selected_i = i_array[sorted_indices]#.tolist()
+    selected_j = j_array[sorted_indices]#.tolist()
 
     return selected_i, selected_j
 
 def Receding_pixel_selection_Euclidean(i_array: List[int]|NDArray[np.int64],
                                       j_array: List[int]|NDArray[np.int64],
-                                      right_number_of_pixels:int=150) -> Tuple[List[int], List[int]]:
+                                      right_number_of_pixels:int=150
+                                      ) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
     Selects pixels from the receding (right) side of a droplet, sorted by 2D Euclidean distance
     from the leftmost point, returning specified number of pixels from both ends.
@@ -186,8 +188,8 @@ def Receding_pixel_selection_Euclidean(i_array: List[int]|NDArray[np.int64],
     sorted_indices = np.argsort(distances)[:right_number_of_pixels]
 
     # Select pixels
-    selected_i = i_array[sorted_indices].tolist()
-    selected_j = j_array[sorted_indices].tolist()
+    selected_i = i_array[sorted_indices]#.tolist()
+    selected_j = j_array[sorted_indices]#.tolist()
 
     return selected_i, selected_j
 

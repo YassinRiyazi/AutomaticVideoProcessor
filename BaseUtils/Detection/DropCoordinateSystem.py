@@ -220,16 +220,16 @@ def EdgePointSorter_Numba(_image: npt.NDArray[np.uint8]) -> npt.NDArray[np.float
 
 if __name__ == "__main__":
     from  DropDetection_Sum import detectionV2
-    _image = LoadImage("/media/Dont/Teflon-AVP/280/S2-SNr2.1_D/T528_01_4.460000000000/SR_edge/frame_000002.png")
+    _image = LoadImage("/media/Dont/Teflon-AVP/280/S2-SNr2.1_D/T528_01_4.460000000000/frames_rotated/frame_000002.png")
     x2, x1 = detectionV2(_image, scaleDownFactor=1, drop_width=300)
     # X = EdgePointSorter(_image[:-1,x1-5:x2+5])
-    X = EdgePointSorter_Numba(_image[:-1,x1-9:x2+9])
-    i_array, j_array = X[:, 0]-9, X[:, 1]
-
-
+    _image = _image[:-5, :]
+    X = EdgePointSorter_Numba(_image[:,x1-9:x2+9])
+    i_array, j_array = X[:, 0], X[:, 1]
 
 
     plt.figure(figsize=(10, 10))
+    print(_image.shape, x1, x2)
     plt.imshow(_image[::-1, :], cmap='gray')
 
     mid = len(i_array) #// 2
@@ -243,3 +243,4 @@ if __name__ == "__main__":
     # Plotter(_image,
     #         i_array, j_array,
     #         SaveAddress=f"src/PyThon/ContactAngle/DropSamples/output_Ordered_frame_000001_fin.png")
+

@@ -374,7 +374,7 @@ def del_in_range(start_idx: int, end_idx: int, list_addresses: ListImages, max_t
 
 # --- Multiprocessing Worker Functions ---
 
-def _init_worker(detector_factory: Callable) -> None:
+def _init_worker(detector_factory: Callable[[], BaseUtils.DropDetection_SUM_YOLO]) -> None:
     """
     Initializer for each worker in the pool.
     This function is called once per worker process when the pool is created.
@@ -429,10 +429,10 @@ class YoloWalker:
     def __init__(self, num_workers: Optional[int] = None):
         self.num_workers = num_workers or max(1, cpu_count() // 2)
         self._pool: Optional[Pool] = None
-        self._detector_factory: Optional[Callable] = None
+        self._detector_factory: Optional[Callable[[], BaseUtils.DropDetection_SUM_YOLO]] = None
         print(f"YoloWalker initialized to use up to {self.num_workers} worker processes.")
 
-    def _get_or_create_pool(self, detector_factory: Callable) -> Pool:
+    def _get_or_create_pool(self, detector_factory: Callable[[], BaseUtils.DropDetection_SUM_YOLO]) -> Pool:
         """
         Creates a new pool if one doesn't exist or if the detector has changed.
         Otherwise, it returns the existing, persistent pool.
@@ -453,7 +453,10 @@ class YoloWalker:
             )
         return self._pool
 
-    def run(self, image_folder: str, skip: int = 90, detector_factory: Callable = BaseUtils.DropDetection_SUM_YOLO) -> None:
+    def run(self,
+            image_folder: str,
+            skip: int = 90,
+            detector_factory: Callable[[], BaseUtils.DropDetection_SUM_YOLO] = BaseUtils.DropDetection_SUM_YOLO) -> None:
         """
         Walks through image frames, distributing the detection work across the managed pool.
 

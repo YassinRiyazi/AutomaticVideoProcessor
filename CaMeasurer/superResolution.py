@@ -13,11 +13,12 @@ import torch
 import numpy    as np
 import torch.nn as nn
 from numpy.typing import NDArray
-from typing import Tuple
+# from typing import Tuple 
+
 # Define the equivalent PyTorch model
 class PyTorchModel(nn.Module):
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         """
         A PyTorch convolutional neural network for single-channel image super-resolution.
 
@@ -37,16 +38,15 @@ class PyTorchModel(nn.Module):
         Notes:
             - The final convolution outputs 9 channels, which are reshaped via PixelShuffle (3× upscaling).
         """
-        super(PyTorchModel, self).__init__()
+        super(PyTorchModel, self).__init__() # type: ignore
         self.conv1 = nn.Conv2d(1,   64,     kernel_size=5, padding="same")
         self.conv2 = nn.Conv2d(64,  64,     kernel_size=3, padding="same")
         self.conv3 = nn.Conv2d(64,  32,     kernel_size=3, padding="same")
         self.conv4 = nn.Conv2d(32,  9,      kernel_size=3, padding="same")
         self.pixel_shuffle = nn.PixelShuffle(3)
         self.relu = nn.ReLU()
-    
-    def forward(self, x):
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
@@ -55,7 +55,7 @@ class PyTorchModel(nn.Module):
         return x
 
 class initiation():
-    def __init__(self,_cuda = True):
+    def __init__(self,_cuda: bool = True):
         """
         Wrapper class for initializing and using a pre-trained PyTorch super-resolution model.
 
@@ -83,7 +83,7 @@ class initiation():
         self._cuda = _cuda
         self.initiate_torch()
 
-    def forward(self,input_tensor):
+    def forward(self, input_tensor: NDArray[np.float32]) -> NDArray[np.uint8]:
         """
         Apply the super-resolution model to the input image.
 
@@ -108,8 +108,6 @@ class initiation():
             out_img_y = self.sup_res_model(data)
 
         out_img_y = (out_img_y.detach().cpu().numpy() * 255.0).clip(0, 255).astype("uint8")
-
-        
         return out_img_y[0,0,:,:]
 
     def initiate_torch(self,):
@@ -129,7 +127,10 @@ class initiation():
         self.sup_res_model.eval()
 
 # Upscale the image using the optimized model and OpenCV
-def upscale_image(model: torch.nn.Module, img: NDArray[np.uint8], kernel: NDArray[np.uint8]) -> NDArray[np.uint8]:
+def upscale_image(model: torch.nn.Module, 
+                  img: NDArray[np.uint8], 
+                  kernel: NDArray[np.uint8]
+                  ) -> NDArray[np.uint8]:
     """
     Apply super-resolution and postprocessing to an input RGB image.
 
@@ -150,7 +151,8 @@ def upscale_image(model: torch.nn.Module, img: NDArray[np.uint8], kernel: NDArra
     y, cr, cb       = cv2.split(img_y_cr_cb)
 
     # Normalize and expand Y channel
-    y_norm          = cv2.normalize(y, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+    y_norm      = np.empty_like(y, dtype=np.float32)
+    cv2.normalize(src=y, dst=y_norm, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
     input_tensor    = np.expand_dims(y_norm, axis=0)
 
     # Run model
@@ -171,5 +173,6 @@ def upscale_image(model: torch.nn.Module, img: NDArray[np.uint8], kernel: NDArra
 
     # Morphological close operation
     gray            = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+    gray            = gray.astype(np.uint8)
 
     return gray

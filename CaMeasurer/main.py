@@ -16,6 +16,7 @@ if __name__ == "__main__":
     from criteria_definition   import *
     from superResolution         import upscale_image
     from BaseUtils.Detection.edgeDetection           import edge_extraction, Advancing_pixel_selection_Euclidean, Receding_pixel_selection_Euclidean
+    from BaseUtils.Detection.LightSourceReflectionRemoving import LightSourceReflectionRemover
     from processing              import poly_fitting
     from criteria_definition    import right_angle, left_angle
 else:
@@ -25,10 +26,11 @@ else:
     from criteria_definition   import *
     from superResolution         import upscale_image
     from BaseUtils.Detection.edgeDetection           import edge_extraction, Advancing_pixel_selection_Euclidean, Receding_pixel_selection_Euclidean
+    from BaseUtils.Detection.LightSourceReflectionRemoving import LightSourceReflectionRemover
     from processing              import poly_fitting
     from criteria_definition    import right_angle, left_angle
 
-def read_csv_for_endpoint_beginning(df: pd.DataFrame, image_name: str) -> list[int]:
+def read_csv_for_endpoint_beginning(df: pd.DataFrame|None, image_name: str) -> list[int]:
     """
     Reads a CSV file and returns the endpoint and beginning values for a given image name.
 
@@ -46,7 +48,13 @@ def read_csv_for_endpoint_beginning(df: pd.DataFrame, image_name: str) -> list[i
     Author:
         - Yassin Riyazi
     """
+    # accessing global dataframe 'df'
+    if df is None:
+        df = pd.read_csv(os.path.join(os.path.dirname(image_name), 'detections.csv')) # type: ignore
+    image_name = os.path.basename(image_name)
+
     match = df[df['image'] == image_name]
+        
     if match.empty:
         raise ValueError(f"Image '{image_name}' not found in the CSV.")
 
@@ -99,27 +107,28 @@ def base_function_process(df: pd.DataFrame,
         Removing super-resolution from this section
     """
     # 1. Loading data
-    if os.path.isfile(os.path.join(ad,name_files[file_number])) is False:
-        raise FileNotFoundError(f"Image file not found: {os.path.join(ad, name_files[file_number])}")
-    
-    just_drop       = cv2.imread(os.path.join(ad,name_files[file_number]))
+
+    File_address = name_files[file_number]
+
+    just_drop       = cv2.imread(name_files[file_number])
     if just_drop is None:
-        raise FileNotFoundError(f"Image not found or unable to read: {os.path.join(ad, name_files[file_number])}")
+        raise FileNotFoundError(f"Image not found or unable to read: {File_address}")
     just_drop       = just_drop[:-5,:,:]
 
     # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     # just_drop = cv2.morphologyEx(just_drop, cv2.MORPH_CLOSE, kernel)
 
-    x1, x2 = read_csv_for_endpoint_beginning(df, os.path.basename(name_files[file_number]))
+    x1, x2 = read_csv_for_endpoint_beginning(df,name_files[file_number])
     del x2 
 
     # 2.  Supper resolution
     just_drop = just_drop.astype(np.uint8)
     upscaled_image  = upscale_image(model, just_drop, kernel)
 
-    # 3.  Extracting whole edge points
-    i_list, j_list  = edge_extraction(upscaled_image.astype(np.int8), thr=30)
 
+    # 3.  Extracting whole edge points
+    # upscaled_image  = LightSourceReflectionRemover(upscaled_image.astype(np.uint8))
+    i_list, j_list  = edge_extraction(upscaled_image.astype(np.int8), thr=30)
     # 4.  Extracting advancing and receding points   
     left_number_of_pixels   = int(64*num_px_ratio)
     right_number_of_pixels  = int(65*num_px_ratio)

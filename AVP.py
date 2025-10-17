@@ -31,7 +31,7 @@ import BaseLine
 import Utilities
 import CaMeasurer
 import shutil
-from cleanUp import create_video_from_images
+from cleanUp import create_video_from_images # type:ignore
 
 
 
@@ -59,24 +59,24 @@ if __name__ == "__main__":
     fe = FrameExtractor.FrameExtractor()
     bld = BaseLine.BaseLine()
     
-    Video_list = sorted(glob.glob("/media/Dont/Teflon-AVP/280/*/*"))
-    cleanStart(Video_list=Video_list)
+    Video_list = sorted(glob.glob("/media/Dont/Teflon-AVP/*/*/*"))
+    # cleanStart(Video_list=Video_list)
 
     YOLO = Utilities.YoloWalker(num_workers=8)
     S4 = CaMeasurer.processes_mp_shared( num_workers=8)
 
-    for _folder in Video_list[::3]:  # Process every third folder for testing
+    for _folder in Video_list[::5]:  # Process every third folder for testing
         try:
             if os.path.isfile(os.path.join(_folder,'.done')):
                 continue
 
-            # elif os.path.isfile(os.path.join(_folder,'error_log.txt')):
-            #     print(f"Skipping folder (error log exists): {_folder}")
-            #     continue
+            elif os.path.isfile(os.path.join(_folder,'error_log.txt')):
+                print(f"Skipping folder (error log exists): {_folder}")
+                continue
 
-            # if len(glob.glob(os.path.join(_folder,'*.log'))) > 0:
-            #     print(f"Skipping folder (log files exist): {_folder}")
-            #     continue
+            if len(glob.glob(os.path.join(_folder,'*.log'))) > 0:
+                print(f"Skipping folder (log files exist): {_folder}")
+                continue
  
             else:
                 cleanUP(_folder)
@@ -106,7 +106,7 @@ if __name__ == "__main__":
             S4.run(_folder)
             # S4.wait_for_tasks()
             # S4.aggregate_and_save(_folder)
-            
+            # break
             # Phase 5: Result Video Maker/Clean Up
             # create_video_from_images(image_folder=os.path.join(_folder, "SR_edge"),
             #                         output_video_path=os.path.join(_folder, "result_video.mkv"),
@@ -124,5 +124,5 @@ if __name__ == "__main__":
             print(f"Error processing folder: {_folder}. Check error_log.txt for details.")
             continue
         
-    YOLO.close_pool()
-    S4.close_pool()
+    YOLO.close()
+    S4.close()

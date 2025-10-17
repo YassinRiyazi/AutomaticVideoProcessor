@@ -10,7 +10,9 @@
         "imread",
         "imshow",
         "imwrite",
+        "linalg",
         "markersize",
+        "MINMAX",
         "ndarray",
         "polyfit",
         "ransac",
@@ -24,6 +26,7 @@
         "xlabel",
         "Yassin",
         "yaxis",
+        "ycrcb",
         "ylabel",
         "ylim"
     ],

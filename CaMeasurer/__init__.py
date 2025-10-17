@@ -6,7 +6,13 @@ import  traceback
 import  pandas          as  pd
 import  numpy           as  np
 from   numpy.typing   import  NDArray
+
+from multiprocessing import Pool
+from functools import partial
+
+
 import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import BaseUtils
 
@@ -62,7 +68,9 @@ def _init_worker(shared_df: pd.DataFrame,
     df = shared_df
     address = shared_address
 
-def process_one_file(file_number: int, name_files: list) -> dict:
+from typing import List, Dict, Any
+
+def process_one_file(file_number: int, name_files: List[str]) -> Dict[str, Any]:
     """Process a single file (executed inside workers)."""
     try:
         arggs = base_function_process(
@@ -76,7 +84,8 @@ def process_one_file(file_number: int, name_files: list) -> dict:
          i_poly_right_rotated, j_poly_right_rotated) = arggs
 
         distance = (x_cropped) * 3
-        _address = os.path.join(address, 'SR_edge', os.path.basename(name_files[file_number]))
+        _address = os.path.join(address, 'SR_edge', os.path.basename(str(name_files[file_number])))
+
 
         adv, rec, rec_angle_point, adv_angle_point, contact_line_length, \
         x_center, y_center, middle_angle_degree = visualize(
@@ -93,7 +102,7 @@ def process_one_file(file_number: int, name_files: list) -> dict:
         )
 
         return {
-            "file": os.path.basename(name_files[file_number]),
+            "file": os.path.basename(str(name_files[file_number])),
             "adv": adv,
             "rec": rec,
             "adv_angle_point": adv_angle_point,
@@ -105,26 +114,25 @@ def process_one_file(file_number: int, name_files: list) -> dict:
         }
 
     except Exception as e:
-        file_path = os.path.join(address, "drops", name_files[file_number])
-        error_msg = f"Error processing file {file_path}: {e}"
+        error_msg = f"Error processing file {address} {name_files[file_number]}: {e}"
 
         # Print full traceback to console
         print(error_msg)
         traceback.print_exc()
 
-        # Check image validity
-        img = cv2.imread(file_path)
-        if img is not None:
-            img_shape = img.shape
-        else:
-            img_shape = "Image could not be read (None)"
+        # # Check image validity
+        # img = cv2.imread(file_path)
+        # if img is not None:
+        #     img_shape = img.shape
+        # else:
+        #     img_shape = "Image could not be read (None)"
     
         # Write detailed error log
         log_path = os.path.join(address, "error_log.txt")
         with open(log_path, "a+") as log_file:
             log_file.write("\n" + "="*80 + "\n")
-            log_file.write(f"File: {file_path}\n")
-            log_file.write(f"Image shape: {img_shape}\n")
+            log_file.write(f"File: {address} {name_files[file_number]}\n")
+            # log_file.write(f"Image shape: {img_shape}\n")
             log_file.write("Exception traceback:\n")
             log_file.write(traceback.format_exc())  # full traceback
             log_file.write("="*80 + "\n")
@@ -209,8 +217,6 @@ def processes(_address:str):
 
 
 
-from multiprocessing import Pool
-from functools import partial
 
 def processes_mp(shared_address: str, num_workers: int = 15):
 
@@ -302,11 +308,23 @@ class processes_mp_shared:
         self._pool = None
         self._worker_func = None
 
-    def _ensure_pool(self):
-        """Create the pool if not already created."""
+    # def _ensure_pool(self):
+    #     """Create the pool if not already created."""
+    #     if self._pool is None:
+    #         print("🚀 Creating persistent worker pool (YOLO initialized once per worker)...")
+    #         self._pool = Pool(processes=self.num_workers, initializer=_init_worker, initargs=(None, None, None, None, None, None))
+    #     else:
+    #         # print("♻️ Reusing existing worker pool (YOLO already loaded).")
+    #         pass
+    def _ensure_pool(self, init_args=None):
+        """Create the pool if not already created. Accept init_args to pass to workers."""
         if self._pool is None:
             print("🚀 Creating persistent worker pool (YOLO initialized once per worker)...")
-            self._pool = Pool(processes=self.num_workers, initializer=_init_worker, initargs=(None, None, None, None, None, None))
+            # init_args should be a tuple: (shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
+            if init_args is None:
+                # fallback: no heavy per-worker initialization (not recommended)
+                init_args = (None, None, None, None, None, None)
+            self._pool = Pool(processes=self.num_workers, initializer=_init_worker, initargs=init_args)
         else:
             # print("♻️ Reusing existing worker pool (YOLO already loaded).")
             pass
@@ -329,6 +347,8 @@ class processes_mp_shared:
 
         shared_df = pd.read_csv(os.path.join(shared_address, str(BaseUtils.config['databases_folder']), 'detections.csv'))
         name_files = BaseUtils.ImageLister(shared_address, str(BaseUtils.config['databases_folder']))
+        name_files = [file for file in name_files if os.path.isfile(file)]
+
 
         os.makedirs(os.path.join(shared_address, 'SR_edge'), exist_ok=True)
 
@@ -337,14 +357,17 @@ class processes_mp_shared:
         num_px_ratio = (0.0039062) / cm_on_pixel_ratio
         kernel = np.ones((5, 5), np.uint8)
 
-        # Step 1: ensure pool exists
-        self._ensure_pool()
+        # prepare args
+        init_args = (shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
 
-        # Step 2: update globals in all workers
-        self._update_pool_globals(shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
-        shared_df = pd.read_csv(os.path.join(shared_address, BaseUtils.config['databases_folder'], 'detections.csv'))
-        name_files = BaseUtils.ImageLister(shared_address, str(BaseUtils.config['databases_folder']))
-        self._update_pool_globals(shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
+        # 1. ensure pool exists with proper init args (creates pool now)
+        self._ensure_pool(init_args=init_args)
+
+
+        # shared_df = pd.read_csv(os.path.join(shared_address, BaseUtils.config['databases_folder'], 'detections.csv'))
+        # name_files = BaseUtils.ImageLister(shared_address, str(BaseUtils.config['databases_folder']))
+        # name_files = [file for file in name_files if os.path.isfile(file)]
+        # self._update_pool_globals(shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
 
         # Step 3: define worker func for this run
         worker_func = partial(process_one_file, name_files=name_files)
@@ -423,8 +446,8 @@ def single (_address: str, file_number: int, name_files: list[str]):
 
 if __name__ == "__main__":
     
-    address  = r"/media/Dont/Teflon-AVP/285/S3-SDS99_D/T120_01_0.900951687825"
+    address= r"/media/Dont/Teflon-AVP/280/S3-SNr3.07_D/T105_06_79.813535314440"
     # processes(address)
     
     single (address,
-            0, ['/media/Dont/Teflon-AVP/285/S3-SDS99_D/T120_01_0.900951687825/databases/frame_000311.png'])
+            0, ['/media/Dont/Teflon-AVP/280/S3-SNr3.07_D/T105_06_79.813535314440/databases/frame_000311.png'])
