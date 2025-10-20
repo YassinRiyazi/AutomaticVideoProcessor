@@ -423,7 +423,7 @@ if __name__ == '__main__':
     init()  # Ensure ffmpeg and ffprobe are available
 
     import glob
-    video_path = glob.glob(r"D:\Videos\S1_30per_T1_C001H001S0001\*.mp4")[0]
+    video_path = glob.glob(r"/media/Dont/Teflon-AVP/280/S3-SNr3.07_D/T105_01_79.813535314440/*.mp4")[0]
     ffmpeg_frame_extractor(
         video_path,
         output_frame_pattern=None,

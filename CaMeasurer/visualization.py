@@ -604,7 +604,7 @@ class plotDrop:
         """
         self.font_size=14
         upscale_factor=3
-        self.conversion_factor=cm_on_pixel/upscale_factor
+        self.conversion_factor=(5/1245)/upscale_factor
 
         self.save_address = save_address
         self.dpi = dpi
@@ -664,7 +664,9 @@ class plotDrop:
         ax = self.ax
         i_text_horizontal = (j_list[i_list == int(h_center)][0] + v_center) / 2
         ax.plot([h_center, h_center], [min(j_list), j_list[i_list == int(h_center)][0]], '--', color='green') # type: ignore
-        ax.text(h_center + 5, i_text_horizontal, str(round(drop_height, 3)) + ' cm', color="green", fontsize=self.font_size) # type: ignore
+        ax.text(h_center + 5, 
+                i_text_horizontal,
+                str(round(drop_height, 3)) + ' cm', color="green", fontsize=self.font_size) # type: ignore
 
     def Middle_line(self,
                     i_middle_line:NDArray[np.float64], j_middle_line:NDArray[np.float64],
@@ -680,14 +682,18 @@ class plotDrop:
                         ) ->None:
         ax = self.ax
         ax.plot([min(i_list[j_list == int(v_center)]), max(i_list[j_list == int(v_center)])], [v_center, v_center], '--', color='green') # type: ignore
-        ax.text(i_text_vertical, v_center + 5, str(round(drop_length, 3)) + ' cm', color="green", fontsize=self.font_size) # type: ignore
+        ax.text(i_text_vertical,
+                v_center + 5,
+                str(round(drop_length, 3)) + ' cm', color="green", fontsize=self.font_size) # type: ignore
 
     def Center_point(self,
                      h_center:int, v_center:int
                      )->None:
         ax = self.ax
         ax.plot(h_center, v_center, '.', color='blue', markersize=14) # type: ignore
-        ax.text(h_center + 5, v_center + 5, 'Center= [x=' + str(round(h_center, 3)) + ' mm, y=' + str(round(v_center, 3)) + ' mm]', color="blue", fontsize=self.font_size) # type: ignore
+        ax.text(h_center + 5,
+                v_center + 5,
+                'Center= [x=' + str(round(h_center/1, 3)) + ' cm, y=' + str(round(v_center* self.conversion_factor, 3)) + ' cm]', color="blue", fontsize=self.font_size) # type: ignore
 
     def Save(self)->None:
         ax = self.ax

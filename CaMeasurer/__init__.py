@@ -12,7 +12,6 @@ from functools import partial
 
 
 import sys
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import BaseUtils
 
@@ -69,6 +68,9 @@ def _init_worker(shared_df: pd.DataFrame,
     address = shared_address
 
 from typing import List, Dict, Any
+import datetime
+import threading
+import time
 
 def process_one_file(file_number: int, name_files: List[str]) -> Dict[str, Any]:
     """Process a single file (executed inside workers)."""
@@ -114,30 +116,28 @@ def process_one_file(file_number: int, name_files: List[str]) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        error_msg = f"Error processing file {address} {name_files[file_number]}: {e}"
+        file_path = str(name_files[file_number])
+        dirpath = os.path.dirname(file_path)
+        os.makedirs(dirpath, exist_ok=True)
+        log_path = os.path.join(dirpath, "error_log.txt")
 
-        # Print full traceback to console
-        print(error_msg)
-        traceback.print_exc()
+        timestamp = datetime.datetime.utcnow().isoformat() + "Z"
+        pid = os.getpid()
+        tid = threading.get_ident()
+        exc_type = type(e).__name__
+        tb_str = traceback.format_exc()
 
-        # # Check image validity
-        # img = cv2.imread(file_path)
-        # if img is not None:
-        #     img_shape = img.shape
-        # else:
-        #     img_shape = "Image could not be read (None)"
-    
-        # Write detailed error log
-        log_path = os.path.join(address, "error_log.txt")
-        with open(log_path, "a+") as log_file:
-            log_file.write("\n" + "="*80 + "\n")
-            log_file.write(f"File: {address} {name_files[file_number]}\n")
-            # log_file.write(f"Image shape: {img_shape}\n")
-            log_file.write("Exception traceback:\n")
-            log_file.write(traceback.format_exc())  # full traceback
-            log_file.write("="*80 + "\n")
-
+        with open(log_path, "a", encoding="utf-8") as log_file:
+            log_file.write(f"\n{'=' * 80}\n")
+            log_file.write(f"Timestamp (UTC): {timestamp}\n")
+            log_file.write(f"Process ID: {pid}    Thread ID: {tid}\n")
+            log_file.write(f"File: {file_path}\n")
+            log_file.write(f"Exception: {exc_type}: {e}\n")
+            log_file.write("Traceback:\n")
+            log_file.write(tb_str)
+            log_file.write(f"{'=' * 80}\n")
         return None
+
 
 def processes(_address:str):
     """
@@ -349,7 +349,6 @@ class processes_mp_shared:
         name_files = BaseUtils.ImageLister(shared_address, str(BaseUtils.config['databases_folder']))
         name_files = [file for file in name_files if os.path.isfile(file)]
 
-
         os.makedirs(os.path.join(shared_address, 'SR_edge'), exist_ok=True)
 
         fps = BaseUtils.config['fps_experiment']
@@ -360,20 +359,18 @@ class processes_mp_shared:
         # prepare args
         init_args = (shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
 
-        # 1. ensure pool exists with proper init args (creates pool now)
+            # 1. ensure pool exists
         self._ensure_pool(init_args=init_args)
 
+        # ✅ 2. update globals for all workers
+        self._update_pool_globals(shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
 
-        # shared_df = pd.read_csv(os.path.join(shared_address, BaseUtils.config['databases_folder'], 'detections.csv'))
-        # name_files = BaseUtils.ImageLister(shared_address, str(BaseUtils.config['databases_folder']))
-        # name_files = [file for file in name_files if os.path.isfile(file)]
-        # self._update_pool_globals(shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
-
-        # Step 3: define worker func for this run
+        # 3. define worker func
         worker_func = partial(process_one_file, name_files=name_files)
 
-        # Step 4: run processing
+        # 4. run processing
         results = []
+
         for res in tqdm.tqdm(self._pool.imap_unordered(worker_func, range(len(name_files))),
                              total=len(name_files), desc=f"Processing {shared_address}"):
             if res is not None:
@@ -428,26 +425,33 @@ class processes_mp_shared:
                 self._worker_func = None
                 print("✅ Pool closed successfully.")
 
-def single (_address: str, file_number: int, name_files: list[str]):
+def single (name_files: list[str]) -> Dict[str, Any]:
     global model, kernel, num_px_ratio, df, address, cm_on_pixel_ratio, fps
-    address = _address
 
-    df = pd.read_csv(os.path.join(address, BaseUtils.config['databases_folder'],'detections.csv')) # type: ignore
 
     fps                         = BaseUtils.config['fps_experiment']  # fps of the original experiment video
     cm_on_pixel_ratio           = 0.0039062
     num_px_ratio                = (0.0039062)/cm_on_pixel_ratio
     error_handling_kernel_size  = (5,5)
-    model                       = initiation()
+    model                       = model
     kernel                      = np.ones(error_handling_kernel_size,np. uint8)
+    model                       = initiation()
 
-    process_one_file(file_number, name_files)
+    results:Dict[str, Any] = {}
+    for index, image in enumerate(name_files):
+        address = os.path.dirname(image)
+        df = pd.read_csv(os.path.join(address, BaseUtils.config['databases_folder'],'detections.csv')) # type: ignore
+        
+        result = process_one_file(index, name_files)
+        results[os.path.basename(image)] = result
+    return results
 
 
 if __name__ == "__main__":
     
-    address= r"/media/Dont/Teflon-AVP/280/S3-SNr3.07_D/T105_06_79.813535314440"
+    # address= r"/media/Dont/Teflon-AVP/280/S3-SNr3.07_D/T105_06_79.813535314440"
     # processes(address)
     
-    single (address,
-            0, ['/media/Dont/Teflon-AVP/280/S3-SNr3.07_D/T105_06_79.813535314440/databases/frame_000311.png'])
+    vv = single (['/media/Dont/Teflon-AVP/280/S2-SNr2.1_D/T528_03_4.460000000000/databases/frame_000001.png'])
+    
+    print(vv)

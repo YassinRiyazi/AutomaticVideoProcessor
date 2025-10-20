@@ -31,6 +31,8 @@ import BaseLine
 import Utilities
 import CaMeasurer
 import shutil
+import argparse
+# import sys
 from cleanUp import create_video_from_images # type:ignore
 
 
@@ -56,16 +58,28 @@ def cleanStart(Video_list: list[str] = sorted(glob.glob("/media/Dont/Teflon-AVP/
             os.remove(log)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Automatic Video Processor (AVP) launcher")
+    parser.add_argument("-C", "--clean", action="store_true", help="Run cleanStart and exit")
+    parser.add_argument("--video-list", nargs="*", help="Optional list of folders to clean (overrides default glob)")
+    args = parser.parse_args()
+
+    if args.clean:
+        if args.video_list:
+            cleanStart(Video_list=sorted(args.video_list))
+        else:
+            cleanStart()
+        print("cleanStart completed, exiting.")
+
     fe = FrameExtractor.FrameExtractor()
     bld = BaseLine.BaseLine()
     
     Video_list = sorted(glob.glob("/media/Dont/Teflon-AVP/*/*/*"))
-    # cleanStart(Video_list=Video_list)
 
-    YOLO = Utilities.YoloWalker(num_workers=8)
-    S4 = CaMeasurer.processes_mp_shared( num_workers=8)
 
-    for _folder in Video_list[::5]:  # Process every third folder for testing
+    YOLO = Utilities.YoloWalker(num_workers=5)
+    S4 = CaMeasurer.processes_mp_shared(num_workers=8)
+
+    for _folder in Video_list[::]:  # Process every third folder for testing
         try:
             if os.path.isfile(os.path.join(_folder,'.done')):
                 continue
@@ -104,13 +118,9 @@ if __name__ == "__main__":
             # Phase 4: 4S-SROF
             # TODO: Share resources [Done] CaMeasurer.processes_mp(_folder, num_workers=10)
             S4.run(_folder)
-            # S4.wait_for_tasks()
-            # S4.aggregate_and_save(_folder)
-            # break
-            # Phase 5: Result Video Maker/Clean Up
-            # create_video_from_images(image_folder=os.path.join(_folder, "SR_edge"),
-            #                         output_video_path=os.path.join(_folder, "result_video.mkv"),
-            #                         )
+            
+            _ = Utilities.position_velocity_correction(os.path.join(_folder, 'result.csv'))
+
             if not os.path.isfile(os.path.join(_folder, 'error_log.txt')):
                 with open(os.path.join(_folder,'.done'), 'w') as f:
                     f.write('Processing completed successfully.\n')
