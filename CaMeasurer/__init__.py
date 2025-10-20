@@ -425,7 +425,12 @@ class processes_mp_shared:
                 self._worker_func = None
                 print("✅ Pool closed successfully.")
 
-def single (name_files: list[str]) -> Dict[str, Any]:
+def single(name_files: list[str]) -> Dict[str, Any]:
+    """
+    Assumption:
+        To find the main address of the video it should go up in folder address till it reach the folder including the main video
+
+    """
     global model, kernel, num_px_ratio, df, address, cm_on_pixel_ratio, fps
 
 
@@ -439,11 +444,20 @@ def single (name_files: list[str]) -> Dict[str, Any]:
 
     results:Dict[str, Any] = {}
     for index, image in enumerate(name_files):
-        address = os.path.dirname(image)
+        # climb parent folders until we find the folder that contains the databases folder
+        curr = os.path.dirname(image)
+        while True:
+            if os.path.isfile(os.path.join(curr, 'video.mp4')):
+                address = curr
+                break
+            curr = os.path.dirname(curr)
+            if len(curr.split(os.sep)) < 2:
+                raise FileNotFoundError("Could not find the main video folder containing 'video.mp4'.")
+
         df = pd.read_csv(os.path.join(address, BaseUtils.config['databases_folder'],'detections.csv')) # type: ignore
-        
+
         result = process_one_file(index, name_files)
-        results[os.path.basename(image)] = result
+        results[image] = result
     return results
 
 

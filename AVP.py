@@ -4,10 +4,11 @@
     Project : Automatic Video Processor (AVP)
     File    : AVP.py
     Version : 1.0.0
-    License : MIT License
+    License : GNU General Public License v3.0
 
-    Description: This is the main file of the Automatic Video Processor (AVP) project. 
-    It orchestrates the various components of the AVP system to process videos automatically.
+    Description:
+        This is the main file of the Automatic Video Processor (AVP) project. 
+        It orchestrates the various components of the AVP system to process videos automatically.
 
     Components:
         + Frame Extractor.Extractor (Folder Address:str|os.pathlike[str]): Void []
@@ -23,17 +24,16 @@
 
         + CleanUP(): Void []
 """
-import os
-import glob
-import tqdm
-import FrameExtractor
-import BaseLine
-import Utilities
-import CaMeasurer
-import shutil
-import argparse
-# import sys
-from cleanUp import create_video_from_images # type:ignore
+import  os
+import  glob
+import  tqdm
+import  shutil
+import  argparse
+import  BaseLine
+import  Utilities
+import  CaMeasurer
+import  FrameExtractor
+from    cleanUp         import  create_video_from_images # type:ignore
 
 
 

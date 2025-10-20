@@ -11,11 +11,11 @@ import BaseUtils
 if __name__ == "__main__":
     from Detection_Sparse import  *
     from Detection_frameNormalizer import singleFolderDropNormalizer
-    from DF_postprocessing import position_velocity_correction
+    from DF_postprocessing import position_velocity_correction, position_velocity_correctionV2
 else:
     from .Detection_Sparse import  *
     from .Detection_frameNormalizer import singleFolderDropNormalizer
-    from .DF_postprocessing import position_velocity_correction
+    from .DF_postprocessing import position_velocity_correction,position_velocity_correctionV2
 
 image_folder = r"D:\Videos\S1_30per_T1_C001H001S0001"
 
