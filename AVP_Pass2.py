@@ -20,7 +20,8 @@ from    typing      import  Any, Dict, Set, List
 pattern = re.compile(r"Exception: ValueError: Image '(frame_\d+\.png)' not found in the CSV\.")
 def Reg(path_to_logfile: str, pattern: re.Pattern[str] = pattern) -> Set[str]:
     # Regex pattern to match the ValueError line and extract frame index
-
+    if not os.path.isfile(error_log_path):
+            return set()
     # Read the log file
     with open(path_to_logfile, "r") as f:
         log_data = f.read()
@@ -75,9 +76,11 @@ def append_measurements_to_df(df_result: pd.DataFrame,
 
 if __name__ == "__main__":
     for folder_Address in tqdm.tqdm(sorted(glob.glob("/media/Dont/Teflon-AVP/*/*/*"))):
+        folder_Address = '/media/Dont/Teflon-AVP/280/S2-SNr2.1_D/T528_01_4.460000000000'
+
+
         error_log_path      = os.path.join(folder_Address, "databases", "error_log.txt")
-        if not os.path.isfile(error_log_path):
-            continue
+        
 
         print(f"Processing folder: {folder_Address}")
         
@@ -93,9 +96,9 @@ if __name__ == "__main__":
         AllImages_names = {os.path.basename(img) for img in AllImages}
         ErrorMissing    = Reg(error_log_path)
         AllMissing      = (set(df_result['file number']) | AllImages_names) - (set(df_result['file number']) & AllImages_names)
-        
+        # print("Total frames in frames_rotated:", len(AllMissing),AllMissing)
         vv = ErrorMissing | AllMissing
-        print("Missing frames:", vv)
+        # print("Missing frames:", vv)
 
         # Ensure every entry in vv exists in df['image']
         missing_not_in_df = vv - set(df['image'].astype(str))
@@ -111,3 +114,4 @@ if __name__ == "__main__":
 
         ## Step. DF post processing
         _ = Utilities.position_velocity_correctionV2(os.path.join(folder_Address, 'result_2Pass.csv'))
+        break
