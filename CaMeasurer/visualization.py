@@ -693,7 +693,7 @@ class plotDrop:
         ax.plot(h_center, v_center, '.', color='blue', markersize=14) # type: ignore
         ax.text(h_center + 5,
                 v_center + 5,
-                'Center= [x=' + str(round(h_center/1, 3)) + ' cm, y=' + str(round(v_center* self.conversion_factor, 3)) + ' cm]', color="blue", fontsize=self.font_size) # type: ignore
+                'Center= [x=' + str(round(h_center/1000, 3)) + ' cm, y=' + str(round(v_center* self.conversion_factor, 3)) + ' cm]', color="blue", fontsize=self.font_size) # type: ignore
 
     def Save(self)->None:
         ax = self.ax

@@ -6,6 +6,10 @@
     Version : 1.0.0
     License : GNU GENERAL PUBLIC LICENSE Version 3
 
+    ChangeLog:
+        V1.0.1 29.10.2025 : Minor bug fix, problem of making name file in windows.
+        V1.0.0 30.09.2025 : Initial version.
+
 """
 
 import  os
@@ -192,7 +196,16 @@ def process_image(filepath: str,
         raise FileNotFoundError(f"Image not found or unable to load: {filepath}")
     (w, h) = image.shape[:2]
     if output_path is None:
-        output_path = os.path.dirname(filepath).replace("frames", "frames_rotated")
+        output_path = os.path.dirname(filepath)
+        parts = output_path.split("frames")
+
+        if len(parts) > 2:
+            # Replace only the second occurrence
+            output_path = "frames".join(parts[:2]) + "frames_rotated" + "frames".join(parts[2:])
+        else:
+            # Replace the only or last occurrence
+            output_path = output_path.replace("frames", "frames_rotated", 1)
+
         if not os.path.isdir(output_path):
             os.makedirs(output_path, exist_ok=True)
 
