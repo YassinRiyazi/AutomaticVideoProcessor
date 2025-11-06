@@ -25,6 +25,10 @@
         if frames are corrupted or zero size, they will be removed
         if frames are not sequentially indexed, an error will be raised
         ffmpeg is installed and added to the system path
+
+    Changelog:
+        - 2025-09-30: Initial version
+        - 2025-11-06: Adding output folder option
 """
 # import re
 import os
@@ -42,29 +46,36 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import BaseUtils
 
 class FrameExtractor:
-    def __init__(self) -> None:
+    def __init__(self,
+                 InPlaceOutput = False) -> None:
         init()
         self.frameAddress = BaseUtils.config["frame_folder"]
+        self.InPlaceOutput = InPlaceOutput
 
     def extract_frames(self,
                        FolderAddress: str, 
-                       fps: int,
+                       fps: float | int,
                        output_frame_pattern: str | None = None, 
                        wipe: bool = False,
                        use_cuda: bool = False,
                        grayscale: bool = True,
                        health_check: bool = True
                        ) -> int:
-        video_path = glob.glob(os.path.join(FolderAddress, "*.mp4"))
+        # checking if adress has no extention then look for .mp4 files
+        if os.path.splitext(FolderAddress)[1] == "":
+            # raise ValueError(colorama.Fore.RED + f"Please provide a folder address without file extension: {FolderAddress}" + colorama.Style.RESET_ALL)
+            video_path = glob.glob(os.path.join(FolderAddress, "*.mp4"))
 
-        if len(video_path) != 1:
-            # clean up colorama in case of error
-            colorama.init(autoreset=True)
-            # cleaning screen
-            os.system('cls' if os.name == 'nt' else 'clear')
-            raise FileNotFoundError(colorama.Fore.RED + f"No or multiple .mp4 files found in the directory: {FolderAddress}" + colorama.Style.RESET_ALL)
+            if len(video_path) != 1:
+                # clean up colorama in case of error
+                colorama.init(autoreset=True)
+                # cleaning screen
+                os.system('cls' if os.name == 'nt' else 'clear')
+                raise FileNotFoundError(colorama.Fore.RED + f"No or multiple .mp4 files found in the directory: {FolderAddress}" + colorama.Style.RESET_ALL)
 
-        video_path = video_path[0]
+            video_path = video_path[0]
+        else:
+            video_path = FolderAddress
 
         frame_dir = os.path.join(os.path.dirname(video_path), str(self.frameAddress))
         if os.path.exists(frame_dir) and wipe == False:
@@ -126,13 +137,29 @@ class FrameExtractor:
 
     def Forward(self,
                 FolderAddress: str,
-                fps: int = int(BaseUtils.config['frame_rate'])):
-        # showing progress with tqdm and updating in place
-        _ = self.extract_frames(FolderAddress=FolderAddress,fps=fps)
-        self.BandGMaker(FolderAddress=FolderAddress)
-        self.Bottom_row_checker(FolderAddress=FolderAddress)
-        self.HealthChecker(FolderAddress=FolderAddress)
-        BaseUtils.FileIndexChecker(FolderAddress=FolderAddress)
+                fps: int = int(BaseUtils.config['frame_rate']),
+                out_dir: str | None = None):
+        """
+        Extract frames and run checks. If out_dir is provided frames will be written
+        to that directory (pattern: out_dir/frame_%06d.png) and subsequent checks
+        will operate on that directory. Otherwise behavior stays the same.
+        """
+        # determine the frames directory to use for post-processing checks
+        if out_dir:
+            frames_folder = out_dir
+            output_pattern = os.path.join(frames_folder, 'frame_%06d.png')
+        else:
+            frames_folder = os.path.join(os.path.dirname(FolderAddress), str(self.frameAddress))
+            output_pattern = None
+
+        # run extraction (pass output_pattern when provided)
+        _ = self.extract_frames(FolderAddress=FolderAddress, fps=fps, output_frame_pattern=output_pattern)
+
+        # run post extraction checks on the frames folder
+        self.BandGMaker(FolderAddress=frames_folder)
+        self.Bottom_row_checker(FolderAddress=frames_folder)
+        self.HealthChecker(FolderAddress=frames_folder)
+        BaseUtils.FileIndexChecker(FolderAddress=frames_folder)
 
 
 if __name__ == "__main__":

@@ -12,10 +12,12 @@ if __name__ == "__main__":
     from Detection_Sparse import  *
     from Detection_frameNormalizer import singleFolderDropNormalizer
     from DF_postprocessing import position_velocity_correction, position_velocity_correctionV2
+    from Jpg2Video import create_video_from_images
 else:
     from .Detection_Sparse import  *
     from .Detection_frameNormalizer import singleFolderDropNormalizer
     from .DF_postprocessing import position_velocity_correction,position_velocity_correctionV2
+    from .Jpg2Video import create_video_from_images
 
 image_folder = r"D:\Videos\S1_30per_T1_C001H001S0001"
 
