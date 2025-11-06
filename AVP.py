@@ -73,15 +73,14 @@ if __name__ == "__main__":
     fe = FrameExtractor.FrameExtractor()
     bld = BaseLine.BaseLine()
     
-    Video_list = sorted(glob.glob(r"D:\TempPP\*\*\*"))
+    Video_list = sorted(glob.glob("/media/Dont/Teflon-AVP/*/*/*"))
 
 
-    YOLO = Utilities.YoloWalker(num_workers=1)
-    S4 = CaMeasurer.processes_mp_shared(num_workers=1)
+    YOLO = Utilities.YoloWalker(num_workers=5)
+    S4 = CaMeasurer.processes_mp_shared(num_workers=8)
 
     for _folder in Video_list[::]:  # Process every third folder for testing
         try:
-            _folder = r"D:\TempPP\280\S2-SNr2.1_D\frames20250621_203528_DropNumber_01"
             if os.path.isfile(os.path.join(_folder,'.done')):
                 continue
 
@@ -93,8 +92,8 @@ if __name__ == "__main__":
                 print(f"Skipping folder (log files exist): {_folder}")
                 continue
  
-            # else:
-            #     cleanUP(_folder)
+            else:
+                cleanUP(_folder)
 
             print(f"Processing folder: {_folder}")
 
@@ -126,8 +125,7 @@ if __name__ == "__main__":
                 with open(os.path.join(_folder,'.done'), 'w') as f:
                     f.write('Processing completed successfully.\n')
                 # shutil.rmtree(os.path.join(_folder, "SR_edge"),         ignore_errors=True)
-            break
-
+            
         except Exception as e:
             import BaseUtils.logException as logException
             
@@ -135,7 +133,6 @@ if __name__ == "__main__":
             logger.log_exception(e, custom_message=f"Error processing folder: {_folder}", Verbose=True)
             print(f"Error processing folder: {_folder}. Check error_log.txt for details.")
             continue
-        
         
     YOLO.close()
     S4.close()

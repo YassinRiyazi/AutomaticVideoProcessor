@@ -21,7 +21,7 @@ if __name__ == "__main__":
     from    BaseUtils.Detection.edgeDetection           import *
     from    processing              import *
     from    visualization           import visualize
-    from    main                    import *
+    from    Multi_Video                    import *
 else:
 
     from    .criteria_definition    import *
