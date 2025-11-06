@@ -8,6 +8,9 @@
         - Improved error handling and logging.
         - Refactored code for better readability and maintainability.
 
+    TODO:
+        Read FPS from video metadata if not provided.
+
 """
 import  os
 import  glob
