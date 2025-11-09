@@ -1,13 +1,23 @@
+"""
+    Author: Yassin Riyazi
+    Date: 06.11.2025
+    Description: Detects drops in video frames using YOLO.
+
+    ReadME:
+        To change YOLO's confidence turn off the engine
+
+    Changelog:
+    - 06.11.2025: Initial version created.
+    - 07.11.2025:
+
+    TODO:
+        - lOAD YOLO MODEL ONLY ONCE PER PROCESS
+        - Add a video health check before processing.
+"""
 import FrameExtractor
 import os
 import glob
 import tqdm
-
-"""
-    Author: Yassin Riyazi
-    Date: 01-07-2025
-    Description: Detects drops in video frames using YOLO.
-"""
 import cv2
 from ultralytics import YOLO
 from send2trash import send2trash
@@ -25,6 +35,7 @@ import shutil
 
 import Utilities
 import subprocess
+import BaseUtils
 
 def safe_delete(file: str
                 ) -> None:
@@ -68,7 +79,7 @@ def delInRange(_start: int, _end: int, _list_address: list[str], max_threads: in
     with ThreadPoolExecutor(max_workers=max_threads) as executor:
         executor.map(safe_delete, files_to_delete)
 
-def detect_and_filter_batch(index_range: YOLO_struct) -> None:
+def detect_and_filter_batch(index_range: YOLO_struct ,loadEngine:bool=False) -> None:
     """
     Worker function for a process that detects drops in a batch of frames using YOLO.
     Deletes all frames in the range if no drops are detected in the first and last frames.
@@ -84,7 +95,9 @@ def detect_and_filter_batch(index_range: YOLO_struct) -> None:
     start_idx, end_idx, frame_list, skip, yolo_conf = index_range
 
     # Load YOLO model once per process
-    YOLO_path = os.path.join(os.path.dirname(__file__), "BaseUtils", "Detection", "Weights", "Gray-320-s.engine")
+    YOLO_path = os.path.join(os.path.dirname(__file__), "BaseUtils", "Detection", "Weights", 
+                             f"{BaseUtils.config['yolo_name']}.{BaseUtils.config['extension_yolo']}")
+
     model = YOLO(YOLO_path, task='detect', verbose=False)
 
     for i in range(start_idx, end_idx, skip):
@@ -210,7 +223,7 @@ def MoveLeftFrames(FolderAddress: str, least_length=50, Name_="") -> None:
 if __name__ == "__main__":
     fe = FrameExtractor.FrameExtractor()
 
-    video_files = sorted(glob.glob(r"/media/d25u2/Dont/Viscosity/*/*/*.mp4"))
+    video_files = sorted(glob.glob(r"/media/d25u2/Dont/Viscosity/SDS/*/*/*.mp4"))
 
     for video_path in tqdm(video_files):
         if not os.path.exists(video_path):
@@ -248,3 +261,4 @@ if __name__ == "__main__":
                                               fps=30)
             
             subprocess.run(["rm", "-rf", segmented_folder])
+        # break

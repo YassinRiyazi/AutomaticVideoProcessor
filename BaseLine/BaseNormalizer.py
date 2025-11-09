@@ -222,7 +222,9 @@ def process_image(filepath: str,
     cv2.imwrite(os.path.join(output_path, os.path.basename(filepath)), _rotated_image)
 
 def folderBaseLineNormalizer(experiment: str, 
-                             output_path: str | None = None):
+                             output_path: str | None = None,
+                             verbose: bool = False
+                             ) -> None:
         files = BaseUtils.ImageLister(experiment)
 
         output_path = os.path.join(experiment, str(BaseUtils.config["rotated_frames_folder"]))
@@ -247,7 +249,8 @@ def folderBaseLineNormalizer(experiment: str,
             cropped_height_list = pool.starmap(line_finder, [(file, rotation_matrix) for file in files])
         cropped_height = np.array(cropped_height_list).mean().astype(np.int16)
         rotation_matrix = cv2.getRotationMatrix2D((w // 2, cropped_height+10), angle, 1.0)
-        print(f"Rotation angle: {angle:.2f} degrees, cropped_height: {cropped_height}")
+        if verbose:
+            print(f"Rotation angle: {angle:.2f} degrees, cropped_height: {cropped_height}")
         with multiprocessing.Pool(processes=int(multiprocessing.cpu_count() * 0.75)) as pool:
             pool.starmap(process_image, [(file, rotation_matrix,cropped_height) for file in files])
 

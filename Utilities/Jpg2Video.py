@@ -107,24 +107,7 @@ def process_experiment_frames(_adress):
 
 
 if __name__ == "__main__":
-    adress = "/media/ubun25/DONT/MPI/S4S-ROF/drop/"
-    experiments = sorted(get_mp4_files(adress, max_depth=5))
-    experiments = [experiment.replace("drop","frame_Extracted") for experiment in experiments]
-    experiments = [experiment.replace(".mp4","") for experiment in experiments]
-    experiments = [experiment.replace("frames","frame_Extracted") for experiment in experiments]
-
-    experiments = list(reversed(experiments))
-    with Pool(processes=cpu_count()) as pool:
-        pool.map(process_experiment, experiments)
-
-    # ## Frames
-    # experiments = sorted(get_mp4_files(adress, max_depth=5))
-    # experiments = [experiment.replace("drop","frames") for experiment in experiments]
-    # experiments = [experiment.replace(".mp4","") for experiment in experiments]
-    # 
-    # print(experiments[0])
-    # with Pool(processes=cpu_count()//2) as pool:
-    #     pool.map(process_experiment, experiments)
-
-# /media/ubun25/DONT/MPI/S4S-ROF/frames/280/S2-SNr2.14_D/frames20250620_222000_DropNumber_01
-# /media/ubun25/DONT/MPI/S4S-ROF/frames/280/S2-SNr2.14_D/frames20250620_222000_DropNumber_01
+    create_video_from_images(image_folder='temp',
+                                              output_video_path='/home/d25u2/Desktop/AutomaticVideoProcessor/temp/result.mp4',
+                                              extension="png",
+                                              fps=30)

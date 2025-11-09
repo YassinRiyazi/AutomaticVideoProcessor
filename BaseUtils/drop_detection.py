@@ -66,7 +66,7 @@ class DropDetection_YOLO(DropDetection):
             os.path.dirname(__file__),
             "Detection",
             "Weights",
-            f"{config['yolo_name']}.engine"
+            f"{config['yolo_name']}.{config['extension_yolo']}"
         )
         self.model = ultralytics.YOLO(addressYOLO, task='detect', verbose=False)
 

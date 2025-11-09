@@ -156,10 +156,10 @@ class FrameExtractor:
         _ = self.extract_frames(FolderAddress=FolderAddress, fps=fps, output_frame_pattern=output_pattern)
 
         # run post extraction checks on the frames folder
-        self.BandGMaker(FolderAddress=frames_folder)
-        self.Bottom_row_checker(FolderAddress=frames_folder)
-        self.HealthChecker(FolderAddress=frames_folder)
-        BaseUtils.FileIndexChecker(FolderAddress=frames_folder)
+        self.BandGMaker(FolderAddress=FolderAddress)
+        self.Bottom_row_checker(FolderAddress=FolderAddress)
+        self.HealthChecker(FolderAddress=FolderAddress)
+        BaseUtils.FileIndexChecker(FolderAddress=FolderAddress)
 
 
 if __name__ == "__main__":

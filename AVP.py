@@ -73,7 +73,9 @@ if __name__ == "__main__":
     fe = FrameExtractor.FrameExtractor()
     bld = BaseLine.BaseLine()
     
-    Video_list = sorted(glob.glob("/media/Dont/Teflon-AVP/*/*/*"))
+    Video_list = sorted(glob.glob("/media/d25u2/Dont/Viscosity/*/*/*"))
+    # skipping the files and keeping folders only
+    Video_list = [folder for folder in Video_list if os.path.isdir(folder)]
 
 
     YOLO = Utilities.YoloWalker(num_workers=5)
@@ -81,26 +83,28 @@ if __name__ == "__main__":
 
     for _folder in Video_list[::]:  # Process every third folder for testing
         try:
-            if os.path.isfile(os.path.join(_folder,'.done')):
-                continue
+            # if os.path.isfile(os.path.join(_folder,'.done')):
+            #     continue
 
-            elif os.path.isfile(os.path.join(_folder,'error_log.txt')):
-                print(f"Skipping folder (error log exists): {_folder}")
-                continue
+            # elif os.path.isfile(os.path.join(_folder,'error_log.txt')):
+            #     print(f"Skipping folder (error log exists): {_folder}")
+            #     continue
 
-            if len(glob.glob(os.path.join(_folder,'*.log'))) > 0:
-                print(f"Skipping folder (log files exist): {_folder}")
-                continue
+            # if len(glob.glob(os.path.join(_folder,'*.log'))) > 0:
+            #     print(f"Skipping folder (log files exist): {_folder}")
+            #     continue
  
-            else:
-                cleanUP(_folder)
+            # else:
+            #     cleanUP(_folder)
 
             print(f"Processing folder: {_folder}")
 
             # Phase 1: Frame Extraction
-            fe.Forward(_folder)
+            if not os.path.exists(os.path.join(_folder, 'frames')):
+                fe.Forward(_folder)
             # Phase 2: Base Line Detection
-            bld.Forward(_folder)
+            if not os.path.exists(os.path.join(_folder, 'frames_rotated')):
+                bld.Forward(_folder)
             
             # Phase 3: Utilities
             # TODO: Share resource with YOLO model [Done] Utilities.main(_folder)
