@@ -10,6 +10,18 @@ yolo_conf : 0.8
 yolo_name : "Gray-320-s"
 extension_yolo : "pt"
 
+Experimetnt_Parameters:
+  fps_experiment: 4000 # fps of the original experiment video
+  cm_on_pixel_ratio: 0.0039062
+  num_px_ratio: 1 #0.0039062
 
-fps_experiment: 4000 # fps of the original experiment video
-cm_on_pixel_ratio: 0.0039062
+PreProcessing:
+  buttom_Line_height : 5 # pixels
+
+Super_Resolution:
+  save_superres   : True
+  upscale_factor  : 3
+  model_path      : "CaMeasurer/models/converted_model.pt"
+
+Processing_Parameters:
+  edge_Detection_threshold : 30

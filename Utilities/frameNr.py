@@ -57,8 +57,10 @@ if __name__ == "__main__":
 
         for fluid_dir in sorted(glob.glob(os.path.join(tilt, "*"))):
             video_frames: list[int] = []
-            for video_file in glob.glob(os.path.join(fluid_dir, "*.mp4")):
-                fc = get_video_frame_count(video_file)
+            # for video_file in glob.glob(os.path.join(fluid_dir, "*.mp4")):
+                # fc = get_video_frame_count(video_file)
+            for video_file in sorted(glob.glob(os.path.join(fluid_dir, "*","frames_rotated"))):
+                fc = len(glob.glob(os.path.join(video_file, "*.png")))
                 if fc > 0:          # ignore -1 errors
                     video_frames.append(fc)
 

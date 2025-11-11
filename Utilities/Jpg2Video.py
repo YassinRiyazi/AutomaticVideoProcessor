@@ -7,6 +7,8 @@ import os
 import subprocess
 import glob
 
+from tqdm import tqdm
+
 def create_video_from_images(image_folder, output_video_path, extension="jpg", fps=30):
     """Create a video from .jpg images in a folder using ffmpeg.
 
@@ -34,7 +36,7 @@ def create_video_from_images(image_folder, output_video_path, extension="jpg", f
         '-c:v', 'libx264',
         '-preset', 'veryslow',  # prioritize quality over speed
         '-pix_fmt', 'yuv444p',  # full color fidelity (use yuv420p for max compatibility)
-        '-threads', '16',
+        '-threads', '4',
         '-y',
         output_video_path
          # '-pix_fmt',     'yuv420p',              # Pixel format for compatibility
@@ -107,7 +109,18 @@ def process_experiment_frames(_adress):
 
 
 if __name__ == "__main__":
-    create_video_from_images(image_folder='temp',
-                                              output_video_path='/home/d25u2/Desktop/AutomaticVideoProcessor/temp/result.mp4',
-                                              extension="png",
-                                              fps=30)
+    import glob
+    import os, tqdm
+
+    folders = sorted(glob.glob("/media/d25u2/Dont/Viscosity/*/*/*"))
+    folders = [f for f in folders if os.path.isdir(os.path.join(f, "frames_rotated"))]
+
+    def process_folder(folder):
+        create_video_from_images(image_folder=os.path.join(folder, "frames_rotated"),
+                                 output_video_path=os.path.join(folder, "Rotated.mkv"),
+                                 extension="png",
+                                 fps=30)
+
+    # Parallel processing
+    with Pool(cpu_count()//2) as p:
+        list(tqdm.tqdm(p.imap(process_folder, folders), total=len(folders)))

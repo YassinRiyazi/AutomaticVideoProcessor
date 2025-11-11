@@ -25,19 +25,20 @@ import  os
 import  cv2
 import  tqdm
 import  numpy               as      np
-import  matplotlib.pyplot   as      plt
+# import  matplotlib.pyplot   as      plt
 from    ultralytics         import  YOLO
 import shutil
-import multiprocessing
+# import multiprocessing
 import BaseLine
 import BaseUtils
+import CaMeasurer
 import FrameExtractor
 import glob
 import argparse
-import tqdm
-import Utilities
+# import tqdm
+# import Utilities
 
-def load_files(ad):
+def load_files(ad: str|os.PathLike[str]) -> list[str]:
     valid_extensions = {"tiff", "tif", "png", "jpg", "jpeg", "bmp", "gif", "webp"}  # Common image formats
     FileNames = []
     for file in sorted(os.listdir(ad)):
@@ -48,7 +49,7 @@ def load_files(ad):
             pass
     return sorted(FileNames)
 
-def _forward(experiment,model):
+def _forward(experiment: str|os.PathLike[str], model :YOLO) -> None:
     for i in (load_files(experiment)):
         file_address = os.path.join(experiment,i)
         image       = cv2.imread(file_address)
@@ -67,7 +68,7 @@ def _forward(experiment,model):
             else:
                 os.remove(file_address)
 
-def _backward(experiment,model):
+def _backward(experiment: str|os.PathLike[str], model:YOLO) -> None:
     for i in (reversed(load_files(experiment))):
         file_address = os.path.join(experiment,i)
         image       = cv2.imread(file_address)
@@ -87,7 +88,7 @@ def _backward(experiment,model):
             else:
                 os.remove(file_address)
 
-def process_experiment(experiment):
+def process_experiment(experiment: str|os.PathLike[str]) -> None:
     yolo_m = YOLO("BaseUtils/Detection/Weights/Gray-320-s.pt", task='detect', verbose=False)
     _forward(experiment,yolo_m.predict)
     _backward(experiment,yolo_m.predict)
@@ -114,7 +115,7 @@ def cleanStart(Video_list: list[str]):
 if __name__ == "__main__":
     Video_list = sorted(glob.glob("/media/d25u2/Dont/Viscosity/*/*/*"))
     Video_list = [folder for folder in Video_list if os.path.isdir(folder)]
-
+    # Video_list = [folder for folder in Video_list if int(folder.split('/')[-3]) > 300]  # Example filter: viscosity >= 50
 
     parser = argparse.ArgumentParser(description="Automatic Video Processor (AVP) launcher")
     parser.add_argument("-C", "--clean", action="store_true", help="Run cleanStart and exit")
@@ -130,26 +131,34 @@ if __name__ == "__main__":
 
     fe = FrameExtractor.FrameExtractor()
     bld = BaseLine.BaseLine()
-    yolo_m = YOLO(f"BaseUtils/Detection/Weights/{BaseUtils.config['yolo_name']}.{BaseUtils.config['extension_yolo']}", task='detect', verbose=False)
+    yolo_m = YOLO(f"BaseUtils/Detection/Weights/{BaseUtils.config['yolo_name']}.{BaseUtils.config['extension_yolo']}",
+                  task='detect',
+                  verbose=False)
+    S4 = CaMeasurer.processes_mp_shared(num_workers=1)
 
     for _folder in tqdm.tqdm(Video_list[::]):
-        # Phase 1: Frame Extraction
-        fe.Forward(_folder)
+        # # Phase 1: Frame Extraction
+        # fe.Forward(_folder)
     
-        # Phase 2: Base Line Detection
-        bld.Forward(_folder)
+        # # Phase 2: Base Line Detection
+        # bld.Forward(_folder)
 
-        # Phase 3: YOLO-based Frame Normalization
-        _forward(os.path.join(_folder, 'frames_rotated'), yolo_m.predict)
-        _backward(os.path.join(_folder, 'frames_rotated'),yolo_m.predict)
+        # # Phase 3: YOLO-based Frame Normalization
+        # _forward(os.path.join(_folder, 'frames_rotated'), yolo_m.predict)
+        # _backward(os.path.join(_folder, 'frames_rotated'),yolo_m.predict)
 
-        # Phase 4: Result Compilation
-        images = Utilities.BaseUtils.ImageLister(FolderAddress=_folder,frameAddress=str(Utilities.BaseUtils.config["rotated_frames_folder"]),)
-        Utilities.singleFolderDropNormalizer(images,Utilities.BaseUtils.DropDetection_YOLO)# type: ignore
-        # TODO: Share resource with YOLO model
-        Utilities.crop_Save(image_folder=_folder)    
+        # # Phase 4: Result Compilation
+        # images = Utilities.BaseUtils.ImageLister(FolderAddress=_folder,frameAddress=str(Utilities.BaseUtils.config["rotated_frames_folder"]),)
+        # Utilities.singleFolderDropNormalizer(images,Utilities.BaseUtils.DropDetection_YOLO)# type: ignore
+        # # TODO: Share resource with YOLO model
+        # Utilities.crop_Save(image_folder=_folder)    
 
 
-    # # Phase 3: YOLO-based Frame Normalization
-    # with multiprocessing.Pool(processes=8) as pool:
-    #     pool.map(process_experiment, [os.path.join(folder, 'frames_rotated') for folder in Video_list])
+        # Phase 5: Super-Resolution O
+        # CaMeasurer.superResolution.process_folder_parallel(
+        #     input_folders=[os.path.join(_folder, 'databases')],
+        #     output_folders=[os.path.join(_folder, 'databases_SR')],
+        #     num_models=1,        )
+        # Phase 6: 4S-SROF
+        os.makedirs(os.path.join(_folder, 'SR_edge'), exist_ok=True)
+        S4.run(_folder)

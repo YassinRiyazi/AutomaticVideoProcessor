@@ -15,22 +15,26 @@ from typing import Tuple
 if __name__ == "__main__":
     from criteria_definition   import *
     from superResolution         import upscale_image
+    import BaseUtils
     from BaseUtils.Detection.edgeDetection           import edge_extraction, Advancing_pixel_selection_Euclidean, Receding_pixel_selection_Euclidean
-    from BaseUtils.Detection.LightSourceReflectionRemoving import LightSourceReflectionRemover
     from processing              import poly_fitting
     from criteria_definition    import right_angle, left_angle
 else:
     import os,sys
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
+    import BaseUtils
     from criteria_definition   import *
     from superResolution         import upscale_image
     from BaseUtils.Detection.edgeDetection           import edge_extraction, Advancing_pixel_selection_Euclidean, Receding_pixel_selection_Euclidean
-    from BaseUtils.Detection.LightSourceReflectionRemoving import LightSourceReflectionRemover
     from processing              import poly_fitting
     from criteria_definition    import right_angle, left_angle
 
-def read_csv_for_endpoint_beginning(df: pd.DataFrame|None, image_name: str) -> list[int]:
+# import matplotlib
+# matplotlib.use('TkAgg')  # Use a interactive backend
+# import matplotlib.pyplot   as      plt
+
+def read_csv_for_endpoint_beginning(df: pd.DataFrame|None,
+                                    image_name: str) -> list[int]:
     """
     Reads a CSV file and returns the endpoint and beginning values for a given image name.
 
@@ -51,6 +55,8 @@ def read_csv_for_endpoint_beginning(df: pd.DataFrame|None, image_name: str) -> l
     # accessing global dataframe 'df'
     if df is None:
         df = pd.read_csv(os.path.join(os.path.dirname(image_name), 'detections.csv')) # type: ignore
+        print(f"Loaded CSV from {os.path.join(os.path.dirname(image_name), 'detections.csv')}")
+
     image_name = os.path.basename(image_name)
 
     match = df[df['image'] == image_name]
@@ -63,7 +69,6 @@ def read_csv_for_endpoint_beginning(df: pd.DataFrame|None, image_name: str) -> l
     beginning = int(row['beginning'])
 
     return [endpoint, beginning]
-
 
 def polyOrderDecider(degree:float|NDArray[np.float64],
                      num_px_ratio:float) -> Tuple[int,int]:
@@ -84,21 +89,19 @@ def polyOrderDecider(degree:float|NDArray[np.float64],
     return pixelNum,polyOrder
 
 def base_function_process(df: pd.DataFrame, 
-                          ad: str,
                           name_files: list[str],
                           file_number: int, 
-                          model:torch.nn.Module, 
                           kernel: NDArray[np.uint8],
-                          num_px_ratio: float,
-                          left_polynomial_degree: int = 3,
-                          right_polynomial_degree: int = 2
+                          left_polynomial_degree:   int     = 3,
+                          right_polynomial_degree:  int     = 2,
+                          model:torch.nn.Module| None       = None, 
                           ):
     """
     1.  Loading data
     1.1.Loading the image
     1.2.cropping the base line
     1.3.loading the x1, x2 positions
-    2.  Super-resolution
+    # 2.  Super-resolution
     3.  Extracting whole edge points
     4.  Extracting advancing and receding points
 
@@ -106,32 +109,43 @@ def base_function_process(df: pd.DataFrame,
         Removing two layer polynomial 
         Removing super-resolution from this section
     """
-    # 1. Loading data
-
     File_address = name_files[file_number]
 
-    just_drop       = cv2.imread(name_files[file_number])
+    just_drop       = cv2.imread(File_address, cv2.IMREAD_GRAYSCALE)
+    # cv2.imshow("Processing Image", just_drop)
+    # cv2.waitKey(0)
+
     if just_drop is None:
         raise FileNotFoundError(f"Image not found or unable to read: {File_address}")
-    just_drop       = just_drop[:-5,:,:]
 
-    # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    # just_drop = cv2.morphologyEx(just_drop, cv2.MORPH_CLOSE, kernel)
-
-    x1, x2 = read_csv_for_endpoint_beginning(df,name_files[file_number])
+    x1, x2 = read_csv_for_endpoint_beginning(df,File_address)
     del x2 
 
     # 2.  Supper resolution
-    just_drop = just_drop.astype(np.uint8)
-    upscaled_image  = upscale_image(model, just_drop, kernel)
+    just_drop           = just_drop.astype(np.uint8)
+    num_px_ratio        = float(BaseUtils.config['Experimetnt_Parameters']['num_px_ratio'])  
+    
+    cutting_bottom_line = int(BaseUtils.config['PreProcessing']['buttom_Line_height'])
+    upscale_factor      = int(BaseUtils.config['Super_Resolution']['upscale_factor'])
+    if model is not None:
+        just_drop   = just_drop[:-cutting_bottom_line,:]
+        just_drop   = upscale_image(model, just_drop, kernel)
+    else:
+        just_drop   = just_drop[:-cutting_bottom_line*upscale_factor-1,:]
+
+        # just_drop = just_drop
+    # converting to gray scale
+    # just_drop           = cv2.cvtColor(just_drop, cv2.COLOR_2GRAY)
+    # cv2.imshow("Processing Image", just_drop)
+    # cv2.waitKey(0)
+    i_list, j_list  = edge_extraction(gray  = just_drop.astype(np.int8),
+                                      thr   = int(BaseUtils.config['Processing_Parameters']['edge_Detection_threshold']))
+    #plot scatter edge points with matplotlib
 
 
-    # 3.  Extracting whole edge points
-    # upscaled_image  = LightSourceReflectionRemover(upscaled_image.astype(np.uint8))
-    i_list, j_list  = edge_extraction(upscaled_image.astype(np.int8), thr=30)
     # 4.  Extracting advancing and receding points   
-    left_number_of_pixels   = int(64*num_px_ratio)
-    right_number_of_pixels  = int(65*num_px_ratio)
+    left_number_of_pixels   = int(64)
+    right_number_of_pixels  = int(65)
     i_left, j_left          = Advancing_pixel_selection_Euclidean(i_list,j_list, left_number_of_pixels=left_number_of_pixels)
     i_right, j_right        = Receding_pixel_selection_Euclidean(i_list,j_list, right_number_of_pixels=right_number_of_pixels)
 
