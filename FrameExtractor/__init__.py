@@ -29,6 +29,7 @@
     Changelog:
         - 2025-09-30: Initial version
         - 2025-11-06: Adding output folder option
+        - 2025-11-12: Automatic fps detection
 """
 # import re
 import os
@@ -52,12 +53,32 @@ class FrameExtractor:
         self.frameAddress = BaseUtils.config["frame_folder"]
         self.InPlaceOutput = InPlaceOutput
 
+    def ffprobe_fps(self, video_path: str) -> float:
+        """
+        Get the frames per second (fps) of a video using ffprobe.
+        """
+        import subprocess
+        import re
+
+        command = [
+            'ffprobe', '-v', '0', '-of', 'csv=p=0',
+            '-select_streams', 'v:0', '-show_entries',
+            'stream=r_frame_rate', video_path
+        ]
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        fps_info = result.stdout.strip()
+
+        # fps_info is in the form of "num/den"
+        num, den = map(int, fps_info.split('/'))
+        fps = num / den if den != 0 else 0
+        return fps
+
     def extract_frames(self,
                        FolderAddress: str, 
-                       fps: float | int,
                        output_frame_pattern: str | None = None, 
                        wipe: bool = False,
                        use_cuda: bool = False,
+                       fps: float | int | None = None,
                        grayscale: bool = True,
                        health_check: bool = True
                        ) -> int:
@@ -76,6 +97,9 @@ class FrameExtractor:
             video_path = video_path[0]
         else:
             video_path = FolderAddress
+
+        if fps is None:
+            fps = self.ffprobe_fps(video_path)
 
         frame_dir = os.path.join(os.path.dirname(video_path), str(self.frameAddress))
         if os.path.exists(frame_dir) and wipe == False:
@@ -137,7 +161,7 @@ class FrameExtractor:
 
     def Forward(self,
                 FolderAddress: str,
-                fps: int = int(BaseUtils.config['frame_rate']),
+                fps: float | int | None = None,
                 out_dir: str | None = None):
         """
         Extract frames and run checks. If out_dir is provided frames will be written
