@@ -33,7 +33,7 @@ import BaseUtils
 
 if __name__ == "__main__":
     from    criteria_definition     import *
-    from    superResolution         import initiation
+    from    superResolution         import initiation, process_folder_parallel, process_folders_parallel
     from    BaseUtils.Detection.edgeDetection           import *
     from    processing              import *
     from    visualization           import visualize
@@ -42,7 +42,7 @@ if __name__ == "__main__":
 else:
 
     from    .criteria_definition    import *
-    from    .superResolution        import initiation
+    from    .superResolution        import initiation, process_folder_parallel, process_folders_parallel
     from    BaseUtils.Detection.edgeDetection          import *
     from    .processing             import *
     from    .visualization          import visualize

@@ -98,6 +98,7 @@ def cleanUP(_folder: str|os.PathLike[str]) -> None:
     shutil.rmtree(os.path.join(_folder, "frames_rotated"),  ignore_errors=True)
     shutil.rmtree(os.path.join(_folder, "databases"),       ignore_errors=True)
     shutil.rmtree(os.path.join(_folder, "SR_edge"),         ignore_errors=True)
+    shutil.rmtree(os.path.join(_folder, "databases_SR"),         ignore_errors=True)
     os.remove(os.path.join(_folder, 'error_log.txt')) if os.path.isfile(os.path.join(_folder, 'error_log.txt')) else None
     os.remove(os.path.join(_folder, 'result.csv')) if os.path.isfile(os.path.join(_folder, 'result.csv')) else None
     os.remove(os.path.join(_folder, 'result_video.mkv')) if os.path.isfile(os.path.join(_folder, 'result_video.mkv')) else None
@@ -112,10 +113,17 @@ def cleanStart(Video_list: list[str]):
         for log in logs:
             os.remove(log)
 
+def CheckOutputdir(addresses:list[str],)->None:
+    for folder in addresses:
+        os.makedirs(folder,exist_ok=True)
+
 if __name__ == "__main__":
-    Video_list = sorted(glob.glob("/media/d25u2/Dont/Viscosity/*/*/*"))
+    import Utilities
+    import os
+    mainAdress = r"D:\HSC_OPCUA_output"
+
+    Video_list = sorted(glob.glob(os.path.join(mainAdress,'*')))
     Video_list = [folder for folder in Video_list if os.path.isdir(folder)]
-    # Video_list = [folder for folder in Video_list if int(folder.split('/')[-3]) > 300]  # Example filter: viscosity >= 50
 
     parser = argparse.ArgumentParser(description="Automatic Video Processor (AVP) launcher")
     parser.add_argument("-C", "--clean", action="store_true", help="Run cleanStart and exit")
@@ -131,34 +139,45 @@ if __name__ == "__main__":
 
     fe = FrameExtractor.FrameExtractor()
     bld = BaseLine.BaseLine()
-    yolo_m = YOLO(f"BaseUtils/Detection/Weights/{BaseUtils.config['yolo_name']}.{BaseUtils.config['extension_yolo']}",
+    folder_Address = os.path.abspath(os.path.dirname(__file__))
+    yolo_Address = os.path.join(folder_Address,f"BaseUtils/Detection/Weights/{BaseUtils.config['yolo_name']}.{BaseUtils.config['extension_yolo']}")
+    yolo_m = YOLO(yolo_Address,
                   task='detect',
                   verbose=False)
-    S4 = CaMeasurer.processes_mp_shared(num_workers=1)
 
     for _folder in tqdm.tqdm(Video_list[::]):
-        # # Phase 1: Frame Extraction
-        # fe.Forward(_folder)
+        # Phase 1: Frame Extraction
+        fe.Forward(_folder)
     
-        # # Phase 2: Base Line Detection
-        # bld.Forward(_folder)
+        # Phase 2: Base Line Detection
+        bld.Forward(_folder)
 
-        # # Phase 3: YOLO-based Frame Normalization
-        # _forward(os.path.join(_folder, 'frames_rotated'), yolo_m.predict)
-        # _backward(os.path.join(_folder, 'frames_rotated'),yolo_m.predict)
+        # Phase 3: YOLO-based Frame Normalization
+        _forward(os.path.join(_folder, 'frames_rotated'), yolo_m.predict)
+        _backward(os.path.join(_folder, 'frames_rotated'),yolo_m.predict)
 
-        # # Phase 4: Result Compilation
-        # images = Utilities.BaseUtils.ImageLister(FolderAddress=_folder,frameAddress=str(Utilities.BaseUtils.config["rotated_frames_folder"]),)
-        # Utilities.singleFolderDropNormalizer(images,Utilities.BaseUtils.DropDetection_YOLO)# type: ignore
-        # # TODO: Share resource with YOLO model
-        # Utilities.crop_Save(image_folder=_folder)    
+        # Phase 4: Result Compilation
+        images = Utilities.BaseUtils.ImageLister(FolderAddress=_folder,frameAddress=str(Utilities.BaseUtils.config["rotated_frames_folder"]),)
+        Utilities.singleFolderDropNormalizer(images,Utilities.BaseUtils.DropDetection_YOLO)# type: ignore
+        # TODO: Share resource with YOLO model
+        Utilities.crop_Save(image_folder=_folder)    
 
-
-        # Phase 5: Super-Resolution O
-        # CaMeasurer.superResolution.process_folder_parallel(
-        #     input_folders=[os.path.join(_folder, 'databases')],
-        #     output_folders=[os.path.join(_folder, 'databases_SR')],
-        #     num_models=1,        )
+       
         # Phase 6: 4S-SROF
         os.makedirs(os.path.join(_folder, 'SR_edge'), exist_ok=True)
-        S4.run(_folder)
+    
+
+    # Phase 5: Super-Resolution O
+    input_folders = sorted(glob.glob(os.path.join(mainAdress,'*',"databases")))
+    input_folders = [folder for folder in input_folders if os.path.isdir(folder)]
+    output_folders = [i.replace("databases", "databases_SR") for i in input_folders]
+    CheckOutputdir(output_folders)
+    CaMeasurer.process_folders_parallel(input_folders, output_folders, num_models=12)
+
+    # Phase 6: 4S-SROF
+    import multiprocessing
+    from CaMeasurer import processes
+    # Use multiprocessing to process multiple experiments in parallel with tqdm progress bar
+    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+        for _ in tqdm.tqdm(pool.imap_unordered(processes, Video_list), total=len(Video_list)):
+            pass

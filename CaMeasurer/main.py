@@ -138,6 +138,8 @@ def base_function_process(df: pd.DataFrame,
     # just_drop           = cv2.cvtColor(just_drop, cv2.COLOR_2GRAY)
     # cv2.imshow("Processing Image", just_drop)
     # cv2.waitKey(0)
+    if just_drop.ndim==3 and just_drop.shape[2] == 1:
+        just_drop = just_drop[:,:,0]
     i_list, j_list  = edge_extraction(gray  = just_drop.astype(np.int8),
                                       thr   = int(BaseUtils.config['Processing_Parameters']['edge_Detection_threshold']))
     #plot scatter edge points with matplotlib
