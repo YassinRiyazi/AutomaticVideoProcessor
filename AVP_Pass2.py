@@ -75,8 +75,8 @@ def append_measurements_to_df(df_result: pd.DataFrame,
     return df_result
 
 if __name__ == "__main__":
-    for folder_Address in tqdm.tqdm(sorted(glob.glob("/media/Dont/Teflon-AVP/*/*/*"))):
-        folder_Address = '/media/Dont/Teflon-AVP/280/S2-SNr2.1_D/T528_01_4.460000000000'
+    for folder_Address in tqdm.tqdm(sorted(glob.glob("/media/d25u2/Dont/Viscosity/*/*/*"))):
+        folder_Address = '/media/d25u2/Dont/Viscosity/280/S5-SDS99_S20/D155328_09_1.06'
 
 
         error_log_path      = os.path.join(folder_Address, "databases", "error_log.txt")

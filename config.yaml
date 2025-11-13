@@ -11,7 +11,7 @@ yolo_name : "Gray-320-s"
 extension_yolo : "pt"
 
 Experimetnt_Parameters:
-  fps_experiment: 500 # fps of the original experiment video # Now in the FrameExtractor we can detect it automatically,
+  fps_experiment: 4000 # fps of the original experiment video # Now in the FrameExtractor we can detect it automatically,
   # TODO: update this value after extracting frames and checking the real fps
   cm_on_pixel_ratio: 0.0039062
   num_px_ratio: 1 #0.0039062

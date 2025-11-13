@@ -113,11 +113,15 @@ if __name__ == "__main__":
     import os, tqdm
 
     folders = sorted(glob.glob("/media/d25u2/Dont/Viscosity/*/*/*"))
-    folders = [f for f in folders if os.path.isdir(os.path.join(f, "frames_rotated"))]
+
+
+    folders = [f for f in folders if len(glob.glob(os.path.join(f, "SR_edge", "*.png"))) == (len(glob.glob(os.path.join(f, "databases", "*.png")))-1)]
+    print(f"Found {len(folders)} folders to process.")
+    # folders = [f for f in folders if os.path.isdir(os.path.join(f, "SR_edge"))]
 
     def process_folder(folder):
-        create_video_from_images(image_folder=os.path.join(folder, "frames_rotated"),
-                                 output_video_path=os.path.join(folder, "Rotated.mkv"),
+        create_video_from_images(image_folder=os.path.join(folder, "SR_edge"),
+                                 output_video_path=os.path.join(folder, "SR_edge.mkv"),
                                  extension="png",
                                  fps=30)
 

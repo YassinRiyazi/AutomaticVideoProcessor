@@ -199,7 +199,42 @@ def processes(address:str,progress_bar:bool=False) -> None:
     ]
     df_out.to_csv(os.path.join(address, 'result.csv'), index=False)
 
+def single(address: str, file_number: int, name_files: list[str]) -> Dict[str, Any]:
+    """
+    Assumption:
+        To find the main address of the video it should go up in folder address till it reach the folder including the main video
 
+    """
+    # global kernel, num_px_ratio, df, address, cm_on_pixel_ratio, fps
+
+
+    # fps                         = BaseUtils.config['fps_experiment']  # fps of the original experiment video
+    # cm_on_pixel_ratio           = 0.0039062
+    # num_px_ratio                = (0.0039062)/cm_on_pixel_ratio
+    error_handling_kernel_size  = (5,5)
+    kernel                      = np.ones(error_handling_kernel_size,np. uint8)
+
+    results:Dict[str, Any] = {}
+    for index, image in enumerate(name_files):
+        # climb parent folders until we find the folder that contains the databases folder
+        curr = os.path.dirname(image)
+        while True:
+            if os.path.isfile(os.path.join(curr, 'video.mp4')):
+                address = curr
+                break
+            curr = os.path.dirname(curr)
+            if len(curr.split(os.sep)) < 2:
+                raise FileNotFoundError("Could not find the main video folder containing 'video.mp4'.")
+
+        df = pd.read_csv(os.path.join(address, BaseUtils.config['databases_folder'],'detections.csv')) # type: ignore
+
+        result = process_one_file(  address=address,
+                                    file_number=file_number, 
+                                    name_files=name_files,
+                                    kernel=kernel,
+                                    df=df)
+        results[image] = result
+    return results
 
 if __name__ == "__main__":
     # processes ('/media/d25u2/Dont/Viscosity/280/S5-S2.01_S20/D175220_01', progress_bar=True)
