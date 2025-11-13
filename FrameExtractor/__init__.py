@@ -59,7 +59,11 @@ class FrameExtractor:
         """
         import subprocess
         import re
-
+        if not os.path.isfile(video_path):
+            try:
+                video_path = glob.glob(os.path.join(video_path, "*.mp4"))[0]    
+            except:
+                raise FileNotFoundError(colorama.Fore.RED + f"Video file not found: {video_path}" + colorama.Style.RESET_ALL)
         command = [
             'ffprobe', '-v', '0', '-of', 'csv=p=0',
             '-select_streams', 'v:0', '-show_entries',
