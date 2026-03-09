@@ -1,4 +1,16 @@
 """
+    Concrete implementation of DropDetection using the YOLO object detection architecture.
+    This class initializes an Ultralytics YOLO model based on configuration settings and 
+    performs inference on input frames to identify droplets. It encapsulates the logic 
+    for loading model weights, running predictions on GPU (if available), and extracting 
+    the highest-confidence bounding box.
+    Attributes:
+        model (ultralytics.YOLO): The loaded YOLO detector model instance initialized 
+            with weights specified in the global config.
+    Note:
+        The functionality is dependent on the `config` dictionary providing valid 
+        'yolo_name' and 'extension_yolo' entries pointing to a valid weights file 
+        in the `Detection/Weights` subdirectory.
     Version             : 1.0.0
 
     Author              : Yassin Riyazi
@@ -86,7 +98,7 @@ class DropDetection_YOLO(DropDetection):
         if yolo_conf is None:
             yolo_conf = float(config["yolo_conf"])
 
-        results = self.model(frame_path, conf=yolo_conf, device="cuda", verbose=False)
+        results = self.model(frame_path, conf=yolo_conf, device="cuda", verbose=True)
         boxes = results[0].boxes  # this is a Boxes object
 
         if len(boxes) == 0:
@@ -249,7 +261,7 @@ class DropDetection_Difference(DropDetection):
         return [(x1, x2)], detected
 
 if __name__ == "__main__":
-    image = "/media/Dont/Teflon-AVP/285/S3-SDS99_D/T120_01_0.900951687825/frames_rotated/frame_000312.png"
+    image = "/media/d25u2/Dont/Viscosity/280/S5-S2.01_S20/D175220_01_4.46/databases/frame_000115.png"
 
     
 
@@ -264,17 +276,17 @@ if __name__ == "__main__":
     # cv2.rectangle(img, (x1, 0), (x2, img.shape[0]-5), (0, 0, 255), 2)  # Draw rectangle using
     # print(x1,x2)
 
-    # detector = DropDetection_YOLO()
-    # bounds, detected = detector.detect_drops(image)
-    # x1,x2 = detector.horizontal_bound_extractor(bounds[0])
-    # cv2.rectangle(img, (x1, 0), (x2, img.shape[0]-5), (255, 0, 0), 2)  # Draw rectangle using
-    # print(x1,x2)
-
-    detector = DropDetection_SUM_YOLO()
+    detector = DropDetection_YOLO()
     bounds, detected = detector.detect_drops(image)
     x1,x2 = detector.horizontal_bound_extractor(bounds[0])
-    cv2.rectangle(img, (x1, 0), (x2, img.shape[0]-5), (0, 255, 0), 2)  # Draw rectangle using
+    cv2.rectangle(img, (x1, 0), (x2, img.shape[0]-5), (255, 0, 0), 2)  # Draw rectangle using
     print(x1,x2)
+
+    # detector = DropDetection_SUM_YOLO()
+    # bounds, detected = detector.detect_drops(image)
+    # x1,x2 = detector.horizontal_bound_extractor(bounds[0])
+    # cv2.rectangle(img, (x1, 0), (x2, img.shape[0]-5), (0, 255, 0), 2)  # Draw rectangle using
+    # print(x1,x2)
 
 
     import matplotlib.pyplot as plt
