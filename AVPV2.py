@@ -29,12 +29,12 @@ import  BaseLine
 import  argparse
 import  Utilities
 import  BaseUtils
-import  CaMeasurer
+import  CaMeasurer.V1__init__ as V1__init__
 import  FrameExtractor
 import  multiprocessing
 import  numpy               as      np
 from    ultralytics         import  YOLO # type: ignore
-from    CaMeasurer          import  processes
+from    CaMeasurer.V1__init__          import  processes
 
 import  matplotlib          as      mpl
 mpl.rcParams['figure.max_open_warning'] = 0 # Suppressinf matplotlib warning for too many open figures
@@ -209,7 +209,7 @@ if __name__ == "__main__":
         Utilities.crop_Save(image_folder=_folder)    
 
         
-        CaMeasurer.process_folder_parallel(os.path.join(_folder,"databases"),
+        V1__init__.process_folder_parallel(os.path.join(_folder,"databases"),
                                            os.path.join(_folder,"databases_SR"),
                                            num_models=3)
 

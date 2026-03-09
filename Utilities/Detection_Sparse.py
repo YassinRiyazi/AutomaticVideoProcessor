@@ -340,7 +340,6 @@ import  multiprocessing     as      mp
 from    multiprocessing     import  Pool, cpu_count
 from    tqdm                import  tqdm
 from    typing              import  List, Tuple, TypeAlias, Optional, Callable
-from    concurrent.futures  import  ThreadPoolExecutor
 
 # --- Type Aliases for Clarity ---
 ListImages: TypeAlias = List[str]
@@ -351,30 +350,16 @@ TaskData: TypeAlias = Tuple[int, int, ListImages, int]
 # This holds the detector instance, initialized once per process.
 worker_detector_instance = None
 
-# --- Helper Functions ---
 
-def safe_delete(file: str) -> None:
-    """
-    Safely deletes a file if it exists.
-    """
-    try:
-        os.remove(file)
-    except FileNotFoundError:
-        pass
-    except Exception as e:
-        print(f"Error deleting {file}: {e}")
+def _detect_frame(frame_path: str) -> bool:
+    global worker_detector_instance
 
-def del_in_range(start_idx: int, end_idx: int, list_addresses: ListImages, max_threads: int = 8) -> None:
-    """
-    Deletes a range of files from a list using multithreading for I/O efficiency.
-    """
-    files_to_delete = list_addresses[start_idx:end_idx]
-    with ThreadPoolExecutor(max_workers=max_threads) as executor:
-        executor.map(safe_delete, files_to_delete)
+    _, has_drop = worker_detector_instance.detect_drops(frame_path)
+    return has_drop
 
 # --- Multiprocessing Worker Functions ---
 
-def _init_worker(detector_factory: Callable[[], BaseUtils.DropDetection_SUM_YOLO]) -> None:
+def _init_worker(detector_factory: Callable[[], object]) -> None:
     """
     Initializer for each worker in the pool.
     This function is called once per worker process when the pool is created.
@@ -409,12 +394,8 @@ def _process_batch(task_data: TaskData) -> None:
         frame_path2 = frame_list[i + skip - 1]
 
         # Run YOLO detection on the first and last frame of the chunk
-        _, has_drop1 = worker_detector_instance.detect_drops(frame_path1)
-        _, has_drop2 = worker_detector_instance.detect_drops(frame_path2)
-
-        # If neither frame has drops, delete the entire range of frames
-        if not has_drop1 and not has_drop2:
-            del_in_range(i, i + skip, frame_list) # Corrected to delete the whole chunk
+        _ = _detect_frame(frame_path1)
+        _ = _detect_frame(frame_path2)
 
 
 # --- Main Class for Managing the Process ---
@@ -428,11 +409,11 @@ class YoloWalker:
     """
     def __init__(self, num_workers: Optional[int] = None):
         self.num_workers = num_workers or max(1, cpu_count() // 2)
-        self._pool: Optional[Pool] = None
-        self._detector_factory: Optional[Callable[[], BaseUtils.DropDetection_SUM_YOLO]] = None
+        self._pool: Optional[object] = None
+        self._detector_factory: Optional[Callable[[], object]] = None
         print(f"YoloWalker initialized to use up to {self.num_workers} worker processes.")
 
-    def _get_or_create_pool(self, detector_factory: Callable[[], BaseUtils.DropDetection_SUM_YOLO]) -> Pool:
+    def _get_or_create_pool(self, detector_factory: Callable[[], object]) -> object:
         """
         Creates a new pool if one doesn't exist or if the detector has changed.
         Otherwise, it returns the existing, persistent pool.
@@ -456,7 +437,8 @@ class YoloWalker:
     def run(self,
             image_folder: str,
             skip: int = 90,
-            detector_factory: Callable[[], BaseUtils.DropDetection_SUM_YOLO] = BaseUtils.DropDetection_SUM_YOLO) -> None:
+            detector_factory: Callable[[], object] = BaseUtils.DropDetection_YOLO
+            ) -> None:
         """
         Walks through image frames, distributing the detection work across the managed pool.
 

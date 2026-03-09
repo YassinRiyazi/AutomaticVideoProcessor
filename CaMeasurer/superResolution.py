@@ -165,8 +165,12 @@ def upscale_image(model: torch.nn.Module,
     crs:list[NDArray[np.uint8]] = []
     cbs:list[NDArray[np.uint8]] = []
     for im in imgs:
+        if im.ndim == 2:
+            im = cv2.cvtColor(im, cv2.COLOR_GRAY2RGB)
+        elif im.ndim == 3 and im.shape[2] == 1:
+            im = cv2.cvtColor(im, cv2.COLOR_GRAY2RGB)
+
         # Convert to YCrCb and split channels
-        # im = cv2.cvtColor(im, cv2.COLOR_GRAY2RGB)
         img_y_cr_cb = cv2.cvtColor(im, cv2.COLOR_RGB2YCrCb)
         y, cr, cb = cv2.split(img_y_cr_cb)
 
@@ -208,8 +212,11 @@ def upscale_image(model: torch.nn.Module,
     
     if output_paths is not None:
         return None
-    else:
-        return results
+
+    if single:
+        return results[0]
+
+    return results
 
 import glob
 from concurrent.futures import ThreadPoolExecutor

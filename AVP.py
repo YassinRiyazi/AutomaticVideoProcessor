@@ -73,13 +73,13 @@ if __name__ == "__main__":
     fe = FrameExtractor.FrameExtractor()
     bld = BaseLine.BaseLine()
     
-    Video_list = sorted(glob.glob("/media/d25u2/Dont/Viscosity/*/*/*"))
+    Video_list = sorted(glob.glob("/media/roboprocessing/Data/video/*"))
     # skipping the files and keeping folders only
     Video_list = [folder for folder in Video_list if os.path.isdir(folder)]
 
 
     YOLO = Utilities.YoloWalker(num_workers=5)
-    S4 = CaMeasurer.processes_mp_shared(num_workers=8)
+    S4   = CaMeasurer.processes_mp_shared(num_workers=8)
 
     for _folder in Video_list[::]:  # Process every third folder for testing
         try:
@@ -95,7 +95,7 @@ if __name__ == "__main__":
             #     continue
  
             # else:
-            #     cleanUP(_folder)
+            cleanUP(_folder)
 
             print(f"Processing folder: {_folder}")
 
@@ -129,6 +129,9 @@ if __name__ == "__main__":
                 with open(os.path.join(_folder,'.done'), 'w') as f:
                     f.write('Processing completed successfully.\n')
                 # shutil.rmtree(os.path.join(_folder, "SR_edge"),         ignore_errors=True)
+            
+            
+            # break # Remove this break to process all folders
             
         except Exception as e:
             import BaseUtils.logException as logException

@@ -123,7 +123,7 @@ def base_function_process(df: pd.DataFrame,
 
     # 2.  Supper resolution
     just_drop           = just_drop.astype(np.uint8)
-    num_px_ratio        = float(BaseUtils.config['Experimetnt_Parameters']['num_px_ratio'])  
+    num_px_ratio        = float(BaseUtils.config['Experiment_Parameters']['num_px_ratio'])  
     
     cutting_bottom_line = int(BaseUtils.config['PreProcessing']['buttom_Line_height'])
     upscale_factor      = int(BaseUtils.config['Super_Resolution']['upscale_factor'])

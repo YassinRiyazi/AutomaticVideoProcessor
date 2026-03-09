@@ -483,6 +483,14 @@ def Main(experiment: str,
     if not os.path.isdir(SaveAddressCSV):
         os.makedirs(SaveAddressCSV, exist_ok=True)
 
+    for stale_image in glob.glob(os.path.join(SaveAddress, '*' + extension)):
+        os.remove(stale_image)
+
+    for metadata_name in ('detections.csv', 'detections.pkl'):
+        metadata_path = os.path.join(SaveAddressCSV, metadata_name)
+        if os.path.isfile(metadata_path):
+            os.remove(metadata_path)
+
     Detector = Detect()
     
     try:

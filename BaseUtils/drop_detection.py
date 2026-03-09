@@ -30,6 +30,9 @@ import  colorama
 import  ultralytics
 import  numpy       as      np
 from    typing      import  List, Tuple, Optional
+from ultralytics.engine.results import Boxes
+from typing import Optional
+
 
 # import tensorrt as trt
 
@@ -83,7 +86,7 @@ class DropDetection_YOLO(DropDetection):
         self.model = ultralytics.YOLO(addressYOLO, task='detect', verbose=False)
 
     def detect_drops(self, frame_path: str, yolo_conf: Optional[float] = None
-                     ) -> tuple[Optional[ultralytics.engine.results.Results], bool]:
+                     ) -> tuple[Optional[Boxes], bool]:
         """
         Detect drops in the frame.
 
@@ -92,13 +95,13 @@ class DropDetection_YOLO(DropDetection):
             yolo_conf (float, optional): Confidence threshold. Defaults to config["yolo_conf"].
 
         Returns:
-            tuple: (best_result, found) where best_result is the result object with the
+            tuple: (best_box, found) where best_box is a Boxes object with the
                    highest-confidence box (or None if no detection), and found is True/False.
         """
         if yolo_conf is None:
             yolo_conf = float(config["yolo_conf"])
 
-        results = self.model(frame_path, conf=yolo_conf, device="cuda", verbose=True)
+        results = self.model(frame_path, conf=yolo_conf, device="cuda", verbose=False)
         boxes = results[0].boxes  # this is a Boxes object
 
         if len(boxes) == 0:
@@ -141,13 +144,19 @@ class DropDetection_SUM(DropDetection):
         """
         Detect drops in the frame.
         """
-        detected = True
         image       = cv2.imread(frame_path, cv2.IMREAD_UNCHANGED)
-        x2, x1 = detectionV2(image, self.scaleDownFactor, self.drop_width)
+        if image is None:
+            return [None, None], False
+
+        try:
+            x2, x1 = detectionV2(image, self.scaleDownFactor, self.drop_width)
+        except ValueError as exc:
+            if "No drop detected in the image" in str(exc):
+                return [None, None], False
+            raise
 
         # detecting edge drops 
-        if image[-25:-5,0:40].mean() < 20 or image[-25:-5,-40:-1].mean() < 20:
-            detected = False
+        detected = not (image[-25:-5,0:40].mean() < 20 or image[-25:-5,-40:-1].mean() < 20)
         return [(x1, x2)], detected
 
     

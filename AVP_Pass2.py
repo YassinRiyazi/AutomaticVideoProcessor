@@ -11,7 +11,7 @@ import  os
 import  glob
 import  tqdm
 import  Utilities
-import  CaMeasurer
+import  CaMeasurer.V1__init__ as V1__init__
 import  pandas      as      pd
 import  numpy       as      np
 from    cleanUp     import  create_video_from_images # type:ignore
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         
         ## Step. CA measurement for missing frames
         vv = [os.path.join(folder_Address, "databases", img) for img in vv]
-        data = CaMeasurer.single(vv)
+        data = V1__init__.single(vv)
 
         df_result = append_measurements_to_df(df_result, data)
         df_result.to_csv(os.path.join(folder_Address, "result_2Pass.csv"), index=False)

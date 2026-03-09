@@ -41,6 +41,11 @@ def FileIndexChecker( FolderAddress: str,
     images = ImageLister(FolderAddress=FolderAddress,
                          frameAddress=frameAddress)
 
+    if len(images) == 0:
+        raise FileNotFoundError(
+            colorama.Fore.RED + f"No frame images found in {os.path.join(FolderAddress, frameAddress)}." + colorama.Style.RESET_ALL
+        )
+
     # extracting image index from filename with regex and if there is missing index raise error
     image_indices = [int(re.search(r'(\d+)', os.path.basename(img_file)).group(1)) for img_file in images] # type: ignore
     for i, _ in enumerate(images, start=image_indices[0]):    

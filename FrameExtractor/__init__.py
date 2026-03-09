@@ -46,6 +46,9 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import BaseUtils
 
+
+VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.mkv', '.mpeg', '.mpg', '.m4v')
+
 class FrameExtractor:
     def __init__(self,
                  InPlaceOutput = False) -> None:
@@ -53,17 +56,39 @@ class FrameExtractor:
         self.frameAddress = BaseUtils.config["frame_folder"]
         self.InPlaceOutput = InPlaceOutput
 
+    def resolve_video_path(self, path: str) -> str:
+        if os.path.isdir(path):
+            with os.scandir(path) as entries:
+                video_candidates = sorted(
+                    entry.path
+                    for entry in entries
+                    if entry.is_file(follow_symlinks=False)
+                    and entry.name.lower().endswith(VIDEO_EXTENSIONS)
+                )
+
+            if len(video_candidates) != 1:
+                raise FileNotFoundError(
+                    colorama.Fore.RED
+                    + f"Expected exactly one video file in the directory: {path}"
+                    + colorama.Style.RESET_ALL
+                )
+
+            return video_candidates[0]
+
+        if os.path.isfile(path):
+            return path
+
+        raise FileNotFoundError(
+            colorama.Fore.RED + f"Video file not found: {path}" + colorama.Style.RESET_ALL
+        )
+
     def ffprobe_fps(self, video_path: str) -> float:
         """
         Get the frames per second (fps) of a video using ffprobe.
         """
         import subprocess
         import re
-        if not os.path.isfile(video_path):
-            try:
-                video_path = glob.glob(os.path.join(video_path, "*.mp4"))[0]    
-            except:
-                raise FileNotFoundError(colorama.Fore.RED + f"Video file not found: {video_path}" + colorama.Style.RESET_ALL)
+        video_path = self.resolve_video_path(video_path)
         command = [
             'ffprobe', '-v', '0', '-of', 'csv=p=0',
             '-select_streams', 'v:0', '-show_entries',
@@ -86,21 +111,7 @@ class FrameExtractor:
                        grayscale: bool = True,
                        health_check: bool = True
                        ) -> int:
-        # checking if adress has no extention then look for .mp4 files
-        if os.path.splitext(FolderAddress)[1] == "":
-            # raise ValueError(colorama.Fore.RED + f"Please provide a folder address without file extension: {FolderAddress}" + colorama.Style.RESET_ALL)
-            video_path = glob.glob(os.path.join(FolderAddress, "*.mp4"))
-
-            if len(video_path) != 1:
-                # clean up colorama in case of error
-                colorama.init(autoreset=True)
-                # cleaning screen
-                os.system('cls' if os.name == 'nt' else 'clear')
-                raise FileNotFoundError(colorama.Fore.RED + f"No or multiple .mp4 files found in the directory: {FolderAddress}" + colorama.Style.RESET_ALL)
-
-            video_path = video_path[0]
-        else:
-            video_path = FolderAddress
+        video_path = self.resolve_video_path(FolderAddress)
 
         if fps is None:
             fps = self.ffprobe_fps(video_path)
@@ -177,7 +188,7 @@ class FrameExtractor:
             frames_folder = out_dir
             output_pattern = os.path.join(frames_folder, 'frame_%06d.png')
         else:
-            frames_folder = os.path.join(os.path.dirname(FolderAddress), str(self.frameAddress))
+            frames_folder = os.path.join(FolderAddress, str(self.frameAddress))
             output_pattern = None
 
         # run extraction (pass output_pattern when provided)
