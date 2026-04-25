@@ -332,7 +332,8 @@ def draw_bounds(image:cv2.Mat,
 def crop_and_save_image(image: npt.NDArray[np.float64],
                         output_path: str, 
                         x1: int, x2: int,
-                        tolerance: int = 3) -> None:
+                        tolerance: int = 3,
+                        y1: int = 0, y2: int = 0) -> None:
     """
     Crops a region from the input image and saves it to the output path.
 
@@ -341,7 +342,9 @@ def crop_and_save_image(image: npt.NDArray[np.float64],
         output_path (str): Path to save the cropped image.
         x1 (int): Top-left x-coordinate.
         x2 (int): Bottom-right x-coordinate.
-
+        y1 (int): Top-left y-coordinate.
+        y2 (int): Bottom-right y-coordinate.
+        tolerance (int): Number of pixels to extend the crop region on each side (default: 3).
     Raises:
         ValueError: If the crop coordinates are invalid or image cannot be loaded.
 
@@ -352,7 +355,7 @@ def crop_and_save_image(image: npt.NDArray[np.float64],
     if x1 >= x2:
         raise ValueError("Invalid crop coordinates: x1 >= x2 or y1 >= y2")
 
-    cropped = image[:, x1-tolerance:x2+tolerance]
+    cropped = image[-y1:, x1-tolerance:x2+tolerance]
     cropped = cv2.bitwise_not(cropped)
     cv2.imwrite(output_path, cropped)
     return None
@@ -437,6 +440,8 @@ class DetectEdgeSave(Detect_Template):
         with open(os.path.join(SaveAddressCSV, 'detections.pkl'), 'wb') as f:
             pickle.dump(self.rows, f)
   
+
+
 def Main(experiment: str,
          SaveAddress: str,
          SaveAddressCSV: str,
@@ -446,6 +451,13 @@ def Main(experiment: str,
          tolerance_width: float = 1.13,
          _morphologyEx: bool = True,
          Detect: Type[Detect_Template] = DetectCropSave) -> None:
+    
+    try:
+        
+        from ..drop_detection import DropDetection_YOLO as _YOLO
+    except ImportError:
+        from drop_detection import DropDetection_YOLO as _YOLO
+
     """
     Crops all images for a single experiment folder and saves crop info to CSV.
 
@@ -492,7 +504,10 @@ def Main(experiment: str,
             os.remove(metadata_path)
 
     Detector = Detect()
-    
+    # _yolo_fallback = None
+    _yolo_fallback = _YOLO()
+
+    rows: list[Dict[str, Union[str, int]]] = []
     try:
         for image in images:
             frame     = cv2.imread(image)
@@ -503,20 +518,41 @@ def Main(experiment: str,
             if _morphologyEx:
                 frame     = cv2.morphologyEx(frame, cv2.MORPH_CLOSE, kernel)
 
-            beginning, endpoint = detectionV2(image = frame,
-                                                scaleDownFactor = scaleDownFactor_x,
-                                                drop_width = drop_width)
-            
-            drop_width = int (tolerance_width * (beginning - endpoint))
+            # beginning, endpoint = detectionV2(image = frame,
+            #                                     scaleDownFactor = scaleDownFactor_x,
+            #                                     drop_width = drop_width)
 
-            Detector.forward(image,
-                            _image,
-                            SaveAddress,
-                            endpoint,
-                            beginning,
-                            tolerance_width)
+            # if beginning - endpoint > 1000:
 
-        Detector.Finish(SaveAddressCSV)
+            yolo_box, yolo_found = _yolo_fallback.detect_drops(image)
+            if yolo_found:
+                endpoint,y1, beginning, y2 = _yolo_fallback.bound_extractor(yolo_box)
+
+            # drop_width = int (tolerance_width * (beginning - endpoint))
+
+            # Detector.forward(image,
+            #                 _image,
+            #                 SaveAddress,
+            #                 endpoint,
+            #                 beginning,
+            #                 tolerance_width)
+
+            img_name    = os.path.basename(image)
+            save_path   = os.path.join(SaveAddress, img_name)
+
+            if (y2-y1) < 200:
+                y1 = 200
+            else:
+                y1 = 300
+            crop_and_save_image(_image, save_path, endpoint, beginning, tolerance=15,
+                                y1=y1, y2=y2)
+
+            rows.append({'image': img_name, 'endpoint': endpoint, 'beginning': beginning})
+
+        # Detector.Finish(SaveAddressCSV)
+        csv_path = os.path.join(SaveAddressCSV, 'detections.csv')
+        df = pd.DataFrame(rows)
+        df.to_csv(csv_path, index=False)
 
     except Exception as e:
         print(f"Error processing {experiment}: {e}")

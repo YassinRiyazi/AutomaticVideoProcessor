@@ -142,6 +142,13 @@ def base_function_process(df: pd.DataFrame,
         just_drop = just_drop[:,:,0]
     i_list, j_list  = edge_extraction(gray  = just_drop.astype(np.int8),
                                       thr   = int(BaseUtils.config['Processing_Parameters']['edge_Detection_threshold']))
+    
+    #save edge points in compressed npz format
+    np.savez_compressed(os.path.join(os.path.dirname(File_address), 
+                        name_files[file_number].replace('.png', '.npz')),
+                        i_list=i_list,
+                        j_list=j_list)
+
     #plot scatter edge points with matplotlib
 
 

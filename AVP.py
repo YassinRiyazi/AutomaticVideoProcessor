@@ -73,7 +73,7 @@ if __name__ == "__main__":
     fe = FrameExtractor.FrameExtractor()
     bld = BaseLine.BaseLine()
     
-    Video_list = sorted(glob.glob("/media/roboprocessing/Data/video/*"))
+    Video_list = sorted(glob.glob("/media/d25u2/Dont/RudExp/*/*"))
     # skipping the files and keeping folders only
     Video_list = [folder for folder in Video_list if os.path.isdir(folder)]
 
@@ -140,6 +140,8 @@ if __name__ == "__main__":
             logger.log_exception(e, custom_message=f"Error processing folder: {_folder}", Verbose=True)
             print(f"Error processing folder: {_folder}. Check error_log.txt for details.")
             continue
+
+        break # Remove this break to process all folders
         
     YOLO.close()
     S4.close()

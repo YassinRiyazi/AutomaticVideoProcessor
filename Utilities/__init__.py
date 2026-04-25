@@ -27,11 +27,13 @@ def crop_Save(image_folder: str,
     """
     Crop and save images from the specified folder.
     """
-    BUDD.Main(experiment = os.path.join(image_folder, str(BaseUtils.config["rotated_frames_folder"])),
-         SaveAddress = os.path.join(image_folder, str(BaseUtils.config["databases_folder"])),
-         SaveAddressCSV = os.path.join(image_folder, str(BaseUtils.config["databases_folder"])),
-         extension = str(BaseUtils.config["image_extension"]),
-         Detect = BUDD.DetectCropSave)
+    BUDD.Main(
+            experiment = os.path.join(image_folder, str(BaseUtils.config["rotated_frames_folder"])),
+            SaveAddress = os.path.join(image_folder, str(BaseUtils.config["databases_folder"])),
+            SaveAddressCSV = os.path.join(image_folder, str(BaseUtils.config["databases_folder"])),
+            extension = str(BaseUtils.config["image_extension"]),
+            Detect = BUDD.DetectCropSave
+            )
     
 def main(image_folder: str,
          ):
