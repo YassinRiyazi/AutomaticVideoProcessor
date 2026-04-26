@@ -72,11 +72,19 @@ import datetime
 import threading
 import time
 
-def process_one_file(file_number: int, name_files: List[str]) -> Dict[str, Any]:
-    """Process a single file (executed inside workers)."""
+def process_one_file(file_number: int, name_files: List[str],
+                     _df: "pd.DataFrame | None" = None,
+                     _address: "str | None" = None) -> Dict[str, Any]:
+    """Process a single file (executed inside workers).
+
+    _df and _address override the worker-global df/address when provided.
+    This avoids the race condition in _update_pool_globals.
+    """
+    _run_df      = _df      if _df      is not None else df
+    _run_address = _address if _address is not None else address
     try:
         arggs = base_function_process(
-            df,
+            _run_df,
             name_files,
             file_number,
             kernel,
@@ -89,7 +97,7 @@ def process_one_file(file_number: int, name_files: List[str]) -> Dict[str, Any]:
          i_poly_right_rotated, j_poly_right_rotated) = arggs
 
         distance = (x_cropped) * 3
-        _address = os.path.join(address, 'SR_edge', os.path.basename(str(name_files[file_number])))
+        _address = os.path.join(_run_address, 'SR_edge', os.path.basename(str(name_files[file_number])))
 
 
         adv, rec, rec_angle_point, adv_angle_point, contact_line_length, \
@@ -362,25 +370,20 @@ class processes_mp_shared:
         # prepare args
         init_args = (shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
 
-            # 1. ensure pool exists
+        # 1. ensure pool exists (model is initialised once per worker at creation)
         self._ensure_pool(init_args=init_args)
 
-        # ✅ 2. update globals for all workers
-        self._update_pool_globals(shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
+        # 2. pass df and address explicitly via partial — no per-worker global update needed
+        worker_func = partial(process_one_file, name_files=name_files,
+                              _df=shared_df, _address=shared_address)
 
-        # 3. define worker func
-        worker_func = partial(process_one_file, name_files=name_files)
-
-        # 4. run processing
+        # 3. run processing
         results = []
 
         for res in tqdm.tqdm(self._pool.imap_unordered(worker_func, range(len(name_files))),
                              total=len(name_files), desc=f"Processing {shared_address}"):
             if res is not None:
                 results.append(res)
-
-        # Step 5: wait for all workers to finish
-        self._pool.apply(_barrier_func)
 
         # Step 6: aggregate results
         if not results:
