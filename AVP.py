@@ -47,6 +47,11 @@ def cleanUP(_folder: str|os.PathLike[str]) -> None:
     os.remove(os.path.join(_folder, 'result.csv')) if os.path.isfile(os.path.join(_folder, 'result.csv')) else None
     os.remove(os.path.join(_folder, 'result_video.mkv')) if os.path.isfile(os.path.join(_folder, 'result_video.mkv')) else None
 
+    logs = glob.glob(os.path.join(_folder,'*.log'))
+    for log in logs:
+        os.remove(log)
+
+
 def cleanStart(Video_list: list[str] = sorted(glob.glob("/media/Dont/Teflon-AVP/*/*/*"))):  
     for _folder in tqdm.tqdm(Video_list):
         cleanUP(_folder)
@@ -73,18 +78,21 @@ if __name__ == "__main__":
     fe = FrameExtractor.FrameExtractor()
     bld = BaseLine.BaseLine()
     
-    Video_list = sorted(glob.glob("/media/d25u2/Dont/RudExp/*/*"))
+    Video_list = sorted(glob.glob(
+                                "/media/d25u2/Dont/RudExp/*/*"
+                                # "/media/d25u2/Dont/RudExp/S3/*"
+                                  ))
     # skipping the files and keeping folders only
     Video_list = [folder for folder in Video_list if os.path.isdir(folder)]
 
 
     YOLO = Utilities.YoloWalker(num_workers=5)
     S4   = CaMeasurer.processes_mp_shared(num_workers=8)
-
+    
     for _folder in Video_list[::]:  # Process every third folder for testing
         try:
-            # if os.path.isfile(os.path.join(_folder,'.done')):
-            #     continue
+            if os.path.isfile(os.path.join(_folder,'.done')):
+                continue
 
             # elif os.path.isfile(os.path.join(_folder,'error_log.txt')):
             #     print(f"Skipping folder (error log exists): {_folder}")
@@ -94,8 +102,8 @@ if __name__ == "__main__":
             #     print(f"Skipping folder (log files exist): {_folder}")
             #     continue
  
-            # else:
-            cleanUP(_folder)
+            else:
+                cleanUP(_folder)
 
             print(f"Processing folder: {_folder}")
 
@@ -109,7 +117,9 @@ if __name__ == "__main__":
             # Phase 3: Utilities
             # TODO: Share resource with YOLO model [Done] Utilities.main(_folder)
             YOLO.run(image_folder =_folder,skip = 40)
-            YOLO.run(image_folder =_folder,skip = 5)
+            YOLO.run(image_folder =_folder,skip = 10)
+            # YOLO.run(image_folder =_folder,skip = 5)
+            YOLO.run(image_folder =_folder,skip = 2)
 
             Utilities.BaseUtils.FileIndexChecker(FolderAddress=_folder,frameAddress=str(Utilities.BaseUtils.config["rotated_frames_folder"]))
             images = Utilities.BaseUtils.ImageLister(FolderAddress=_folder,frameAddress=str(Utilities.BaseUtils.config["rotated_frames_folder"]),)
@@ -129,8 +139,7 @@ if __name__ == "__main__":
                 with open(os.path.join(_folder,'.done'), 'w') as f:
                     f.write('Processing completed successfully.\n')
                 # shutil.rmtree(os.path.join(_folder, "SR_edge"),         ignore_errors=True)
-            
-            
+        
             # break # Remove this break to process all folders
             
         except Exception as e:
@@ -141,7 +150,7 @@ if __name__ == "__main__":
             print(f"Error processing folder: {_folder}. Check error_log.txt for details.")
             continue
 
-        break # Remove this break to process all folders
+        # break # Remove this break to process all folders
         
     YOLO.close()
     S4.close()

@@ -33,6 +33,7 @@ def ImageLister(FolderAddress: str,
         images = sorted(images)  # Sorting images before
         return images
 
+import shutil
 def FileIndexChecker( FolderAddress: str,
                      frameAddress: str = str(config["frame_folder"])):
     """
@@ -50,7 +51,11 @@ def FileIndexChecker( FolderAddress: str,
     image_indices = [int(re.search(r'(\d+)', os.path.basename(img_file)).group(1)) for img_file in images] # type: ignore
     for i, _ in enumerate(images, start=image_indices[0]):    
         if i != image_indices[i-1]:
-            raise ValueError(colorama.Fore.RED + f"Missing image index detected: {i}" + colorama.Style.RESET_ALL)
+            # raise ValueError(colorama.Fore.RED + f"Missing image index detected: {i}" + colorama.Style.RESET_ALL)
+            shutil.copyfile(images[i-1], os.path.join(FolderAddress, frameAddress, f"frame{str(i).zfill(6)}.jpg"))
+            print(colorama.Fore.YELLOW + f"Warning: Missing image index detected: {i}. Copied previous image to fill the gap." + colorama.Style.RESET_ALL)
+            FileIndexChecker(FolderAddress=FolderAddress, frameAddress=frameAddress) # Recursively check again after filling the gap
+
 
 if __name__ == "__main__":
     # Example usage

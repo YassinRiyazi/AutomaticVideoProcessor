@@ -24,16 +24,24 @@ import  matplotlib.pyplot as plt
 from    skimage.measure     import  ransac, LineModelND # type: ignore
 
 from numpy.typing import NDArray
-from typing import Tuple, TypeAlias
+from typing import Any, Tuple, TypeAlias
 ImageSize: TypeAlias = Tuple[int, int]
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import BaseUtils
 
+def load_cropped_image(image_path: str,
+                       yolo_hint: int | None = None) -> NDArray[np.uint8]:
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)       
+    if yolo_hint is not None:
+        image = image[:yolo_hint, :].astype(np.uint8)
+    return image
+
 def fit_and_rotate_image(image_path: str,
                          results: bool = True,
-                         focus_ratio: float = 0.3
+                         focus_ratio: float = 0.3,
+                         yolo_hint: int | None = None
                          ) -> tuple[float, ImageSize, NDArray[np.uint8]]:
     """
     Fits a robust line to the bottom edges of an image and rotates the image to level the surface.
@@ -42,6 +50,7 @@ def fit_and_rotate_image(image_path: str,
         image_path (os.PathLike): Path to the input image.
         results (bool, optional): If True, saves a diagnostic plot.
         focus_ratio (float, optional): Portion of the image height to analyze from the bottom. Default 0.3.
+        yolo_hint (int | None, optional): Vertical position hint from YOLO to guide line fitting. Default None.
     
     Returns:
         tuple:
@@ -52,8 +61,7 @@ def fit_and_rotate_image(image_path: str,
     <img src="https://raw.githubusercontent.com/YassinRiyazi/Main/refs/heads/main/src/PyThon/ContactAngle/BaseLine/doc/result.png" alt="Italian Trulli">
 
     """
-
-    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    image = load_cropped_image(image_path, yolo_hint)  # type: ignore
     if image is None:
         raise FileNotFoundError(f"Image not found or unable to load: {image_path}")
     h, w = image.shape[:2]
@@ -116,23 +124,57 @@ def fit_and_rotate_image(image_path: str,
 
     return angle, image.shape, rotated_image
 
-def fit_image(image: NDArray[np.uint8], black_base_line:int=10) -> int:
+def fit_image(image: NDArray[np.uint8],
+              black_base_line: int = 10,
+              yolo_hint: int | None = None,
+              search_margin: int = 80) -> int:
     """
-    Fits a line to the detected edges in a grayscale image using RANSAC, and computes 
-    the vertical offset from the fitted line to a given black baseline.
+    Finds the topmost horizontal surface line by scanning edge rows top-to-bottom.
+
+    When `yolo_hint` is provided (the rotated-space y2 of the drop bounding box), the
+    search is restricted to [yolo_hint - search_margin, yolo_hint + search_margin] so
+    the function locks onto the substrate surface rather than deeper lines.
+    Falls back to RANSAC if no usable edges are found in the search window.
 
     Args:
-        image (cv2.Mat): Grayscale input image.
-        black_base_line (int, optional): Reference baseline offset in pixels. Defaults to 10.
+        image (cv2.Mat): Grayscale input image (already rotated).
+        black_base_line (int): Offset subtracted from the detected row. Defaults to 10.
+        yolo_hint (int | None): Estimated y-coordinate of the drop-surface contact in
+            rotated-image space. If None the full image height is searched.
+        search_margin (int): Pixels above/below `yolo_hint` to search. Defaults to 80.
 
     Returns:
-        int: Vertical offset (in pixels) between the fitted line's center height and the black baseline.
+        int: Row index of the topmost prominent edge minus black_base_line.
     """
-    # Detect edges using Canny edge detector
+    # Detect edges
     edges = cv2.Canny(image, 50, 150)
-    
-    # Find coordinates of non-zero (edge) pixels
-    y_indices, x_indices = np.where(edges > 0)
+
+    h = image.shape[0]
+
+    # Determine vertical search window
+    if yolo_hint is not None:
+        row_start = max(0, yolo_hint - search_margin)
+        row_end   = min(h, yolo_hint + search_margin)
+    else:
+        row_start, row_end = 0, h
+
+    # Per-row edge counts within the window
+    row_sums = edges[row_start:row_end, :].sum(axis=1)
+
+    if row_sums.max() > 0:
+        threshold = row_sums.max() * 0.30
+        # Scan top-to-bottom and take the first row that crosses the threshold
+        for local_i, val in enumerate(row_sums):
+            if val >= threshold:
+                return (row_start + local_i) - black_base_line
+
+    # --- Fallback: RANSAC on all edges in the window ---
+    y_indices, x_indices = np.where(edges[row_start:row_end, :] > 0)
+    if len(y_indices) < 2:
+        # Last resort: return middle of the window
+        return (row_start + (row_end - row_start) // 2) - black_base_line
+
+    y_indices = y_indices + row_start  # adjust back to full-image coordinates
     points = np.column_stack((x_indices, y_indices))  # Shape: (N, 2)
 
     # Fit a robust line to the edge points using RANSAC (to handle outliers)
@@ -141,29 +183,28 @@ def fit_image(image: NDArray[np.uint8], black_base_line:int=10) -> int:
     
     # Define X-range of the line (min to max X in the edge points)
     line_x = np.array([min(x_indices), max(x_indices)])
-    
-    # Predict corresponding Y values from the fitted line model
-    line_y = model.predict_y(line_x)# type: ignore
-    
-    # Compute angle of the line (not used in return, but may be useful for debugging)
-    dx = line_x[1] - line_x[0]
-    dy = line_y[1] - line_y[0]# type: ignore
-    angle = np.degrees(np.arctan2(dy, dx))  # Angle of the fitted line in degrees# type: ignore
+    line_y = model.predict_y(line_x)  # type: ignore
 
-    # Compute average height of the line and subtract the baseline
-    return int((line_y[1] + line_y[0]) // 2) - black_base_line# type: ignore
+    return int((line_y[1] + line_y[0]) // 2) - black_base_line  # type: ignore
 
-def line_finder(image_address:str, rotation_matrix:cv2.Mat, black_base_line:int = 10) -> int:
+def line_finder(image_address: str,
+                rotation_matrix: cv2.Mat,
+                black_base_line: int = 10,
+                yolo_hint: int | None = None) -> int:
     """
-    Finds the height of the line in the image after applying a rotation matrix.
+    Finds the height of the topmost surface line in the image after applying a rotation matrix.
     Args:
-        image (cv2.Mat): Input image in **grayscale**.
+        image_address (str): Path to the input grayscale image.
         rotation_matrix (cv2.Mat): Rotation matrix to apply to the image.
-        black_base_line (int): The baseline height to subtract from the line height.
+        black_base_line (int): Offset subtracted from the detected row. Defaults to 10.
+        yolo_hint (int | None): Estimated y-coordinate of the drop-surface contact in
+            rotated-image space, used to restrict the edge search window.
     Returns:
-        int: Height of the line in the rotated image.
+        int: Row index (in the rotated image) of the detected topmost surface line.
     """
-    image = cv2.imread(image_address, cv2.IMREAD_GRAYSCALE)
+    # image = cv2.imread(image_address, cv2.IMREAD_GRAYSCALE)
+    image = load_cropped_image(image_address, yolo_hint)  # type: ignore
+
     if image is None:
         raise FileNotFoundError("Image not found or unable to load.")
     (h, w) = image.shape[:2]
@@ -172,13 +213,16 @@ def line_finder(image_address:str, rotation_matrix:cv2.Mat, black_base_line:int 
                                    flags=cv2.INTER_LINEAR,
                                    borderMode=cv2.BORDER_CONSTANT,
                                    borderValue=255)
-    cropped_height = fit_image(rotated_image.astype(np.uint8), black_base_line=black_base_line)
+    cropped_height = fit_image(rotated_image.astype(np.uint8),
+                               black_base_line=black_base_line,
+                               yolo_hint=yolo_hint)
     return cropped_height
 
 def process_image(filepath: str, 
                   rotation_matrix: NDArray[np.float64],
                   cropped_height:int,
                   output_path: str|None = None,
+                  yolo_hint: int | None = None
                   ) -> None:
     """
     Processes an image by applying a rotation matrix and saving the result.
@@ -191,7 +235,9 @@ def process_image(filepath: str,
     Calling image[cropped_height+10:, :] = 0  before image rotation make weird artifacts
     <img src="https://raw.githubusercontent.com/YassinRiyazi/Main/refs/heads/main/src/PyThon/ContactAngle/BaseLine/doc/rotationweirdartifacts.png" alt="Italian Trulli">
     """
-    image = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+    # image = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+    image = load_cropped_image(filepath, yolo_hint)  # type: ignore
+
     if image is None:
         raise FileNotFoundError(f"Image not found or unable to load: {filepath}")
     (w, h) = image.shape[:2]
@@ -221,6 +267,68 @@ def process_image(filepath: str,
     # _rotated_image = cv2.morphologyEx(_rotated_image, cv2.MORPH_CLOSE, kernel)
     cv2.imwrite(os.path.join(output_path, os.path.basename(filepath)), _rotated_image)
 
+def _estimate_baseline_from_yolo(files: list[str],
+                                  n_samples: int = 50) -> int | None:
+    """
+    Estimates the substrate surface row in rotated-image space by running the YOLO
+    drop detector on a few mid-section frames and projecting the bounding-box bottom
+    edge (y2) through the rotation matrix.
+
+    This gives `folderBaseLineNormalizer` a spatial hint so that `fit_image` searches
+    only near the actual drop-substrate contact line, rather than latching onto lower
+    or deeper features in the image.
+
+    Args:
+        files (list[str]): Sorted list of full frame paths for the experiment.
+        rotation_matrix (NDArray[Any]): 2x3 affine rotation matrix already
+            computed from the first rotation step.
+        n_samples (int): Number of frames to sample from the middle third. Defaults to 50.
+
+    Returns:
+        int | None: Median rotated y2 coordinate, or None if YOLO is unavailable or
+            yields no detections.
+    """
+    try:
+        detector = BaseUtils.DropDetection_YOLO()
+    except Exception:
+        return None
+
+    n = len(files)
+    third = max(1, n // 3)
+    sample_indices = np.linspace(third, 2 * third, n_samples, dtype=int)
+
+    y2_rotated_vals: list[int] = []
+    for idx in sample_indices:
+        frame_path = files[int(idx)]
+        try:
+            box, detected = detector.detect_drops(frame_path)
+            if not detected or box is None:
+                continue
+            x1, y1, x2, y2 = BaseUtils.DropDetection_YOLO.bound_extractor(box)
+            y2_rotated_vals.append(y2)
+        except Exception:
+            continue
+
+    if not y2_rotated_vals:
+        return None
+
+    # iterate over all images and crop them to the y2_rotated_vals and then find the line and take the median of the line heights as the final y2_rotated_vals
+    # y22 = int(np.array(y2_rotated_vals).mean())  # +30 px safety margin so the substrate surface line is not clipped
+    y22 = sorted(y2_rotated_vals)[0] + 15  # type: ignore
+    for file in files:
+        image = cv2.imread(file, cv2.IMREAD_GRAYSCALE)       
+        image = image[:y22, :].astype(np.uint8)  # crop to the max y2 + margin
+        
+        # these lines are to avoid the weird yolo detection failailire which lead to flase negatives. 
+        # by making the top and bottom 3 rows white we ensure that the line fitting will not latch onto these artifacts
+        image[:, :3] = 255  # Set the leftmost 3 columns to white
+        image[:, -3:] = 255  # Set the rightmost 3 columns to white
+
+        cv2.imwrite(file, image)  # overwrite the original image with the cropped one
+
+    return None
+    # return int(np.median(y2_rotated_vals))
+
 def folderBaseLineNormalizer(experiment: str, 
                              output_path: str | None = None,
                              verbose: bool = False
@@ -236,17 +344,31 @@ def folderBaseLineNormalizer(experiment: str,
                 os.makedirs(output_path, exist_ok=True)
         
         image = cv2.imread(os.path.join(experiment, files[2]), cv2.IMREAD_GRAYSCALE)
-        if image is None:
-            raise FileNotFoundError(f"Image not found or unable to load: {os.path.join(experiment, files[2])}")
+        
+        # Get a hint of the drop's vertical position from YOLO to guide the line fitting
+        _ = _estimate_baseline_from_yolo(files)
+        yolo_hint = None
+        # add a margin to be safe and avoid the drop itself
+        # yolo_hint = yolo_hint + 7 if yolo_hint is not None else None
+        # crop image to focus on the top part where the surface line is expected, this also makes the line fitting more robust and faster
+        if yolo_hint is not None:
+            row_start = max(0, yolo_hint - 100)  # type: ignore
+        else:
+            row_start = 0
+        image = image[row_start:, :]
+
         (h, w) = image.shape[:2]
         center = (w // 2, h // 2)
-        angle,_shape, rotated_image = fit_and_rotate_image(os.path.join(experiment, files[2]),results=True)
+        angle,_shape, rotated_image = fit_and_rotate_image(os.path.join(experiment, files[2]),results=True, yolo_hint=yolo_hint) # type: ignore
         del _shape, rotated_image
         
         rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
 
+        if verbose:
+            print(f"YOLO baseline hint (rotated y2): {yolo_hint}")
+
         with multiprocessing.Pool(processes=int(multiprocessing.cpu_count()*0.75)) as pool: #
-            cropped_height_list = pool.starmap(line_finder, [(file, rotation_matrix) for file in files])
+            cropped_height_list = pool.starmap(line_finder, [(file, rotation_matrix, 10, yolo_hint) for file in files])
         cropped_height = np.array(cropped_height_list).mean().astype(np.int16)
         rotation_matrix = cv2.getRotationMatrix2D((w // 2, cropped_height+10), angle, 1.0)
         if verbose:
