@@ -42,6 +42,7 @@ if __name__ == "__main__":
 else:
     from .Video2Jpg import ffmpeg_frame_extractor, init
 
+
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import BaseUtils
@@ -111,6 +112,8 @@ class FrameExtractor:
                        grayscale: bool = True,
                        health_check: bool = True
                        ) -> int:
+
+        
         video_path = self.resolve_video_path(FolderAddress)
 
         if fps is None:
@@ -121,6 +124,13 @@ class FrameExtractor:
             print(colorama.Fore.YELLOW + f"Frames directory already exists in {FolderAddress}. Use wipe=True to overwrite." + colorama.Style.RESET_ALL)
             return 0
 
+        _Ccrop = [
+            BaseUtils.config["Video"]["cropping_properties"]["X"], 
+            BaseUtils.config["Video"]["cropping_properties"]["Y"], 
+            BaseUtils.config["Video"]["cropping_properties"]["WIDTH"], 
+            BaseUtils.config["Video"]["cropping_properties"]["HEIGHT"]
+         ]
+
         ffmpeg_frame_extractor(
             video_path,
             output_frame_pattern=output_frame_pattern,
@@ -128,7 +138,8 @@ class FrameExtractor:
             wipe=wipe,
             use_cuda=use_cuda,
             grayscale=grayscale,
-            health_check=health_check
+            health_check=health_check,
+            crop=_Ccrop
         )
         return 1
     
@@ -171,8 +182,9 @@ class FrameExtractor:
             img = Image.open(img_file)
             img_array = np.array(img)
             bottom_row = img_array[-1, :].mean(axis=-1)  # Average across color channels if present
-            if bottom_row > 100:  # Threshold for "mostly white"
-                raise ValueError(colorama.Fore.RED + f"The sample line is not visible; thus, baseline detection will fail for: {img_file}" + colorama.Style.RESET_ALL)
+            # if bottom_row > 100:  # Threshold for "mostly white"
+            #     # raise ValueError(colorama.Fore.RED + f"The sample line is not visible; thus, baseline detection will fail for: {img_file}" + colorama.Style.RESET_ALL)
+            #     BaseUtils.log(colorama.Fore.YELLOW + f"Warning: The sample line is not visible in {img_file}. Baseline detection may fail." + colorama.Style.RESET_ALL)
 
     def Forward(self,
                 FolderAddress: str,

@@ -1,0 +1,10 @@
+torch
+colorama
+opencv-python
+tqdm
+matplotlib
+PyYAML
+pandas
+ultralytics
+tensorrt-cu12
+scikit-image

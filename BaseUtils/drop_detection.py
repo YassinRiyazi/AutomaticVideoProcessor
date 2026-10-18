@@ -42,11 +42,11 @@ from typing import Optional
 
 if __name__ == "__main__":
     from config import config
-    from Detection.DropDetection_Sum import detectionV2,Main,DetectEdgeSave,DetectCropSave
+    from Detection.DropDetection_Sum import detectionV2,detectionV3,Main,DetectEdgeSave,DetectCropSave
     from Detection.DropDetection_Difference import DropPreProcessor as DDdifference
 else:
     from .config import config
-    from .Detection.DropDetection_Sum import detectionV2,Main,DetectEdgeSave,DetectCropSave
+    from .Detection.DropDetection_Sum import detectionV2,detectionV3,Main,DetectEdgeSave,DetectCropSave
     from .Detection.DropDetection_Difference import DropPreProcessor as DDdifference
 
 
@@ -101,6 +101,9 @@ class DropDetection_YOLO(DropDetection):
         if yolo_conf is None:
             yolo_conf = float(config["yolo_conf"])
 
+        if os.path.exists(frame_path) is False:
+            return None, False
+
         results = self.model(frame_path, conf=yolo_conf, device="cuda", verbose=False)
         boxes = results[0].boxes  # this is a Boxes object
 
@@ -125,17 +128,6 @@ class DropDetection_YOLO(DropDetection):
         if hasattr(box, "xyxy"):
             x1, _, x2, _ = box.xyxy[0].cpu().numpy().astype(np.float32)
             return int(x1), int(x2)
-        else:
-            raise TypeError("Input must be a YOLO Box with 'xyxy' attribute.")
-        
-    @staticmethod
-    def bound_extractor(box) -> Tuple[int, int, int, int]:
-        """
-        Extract horizontal bounds (x1, x2) from a YOLO Boxes object or a single box.
-        """
-        if hasattr(box, "xyxy"):
-            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(np.float32)
-            return int(x1), int(y1), int(x2), int(y2)
         else:
             raise TypeError("Input must be a YOLO Box with 'xyxy' attribute.")
         
@@ -281,7 +273,7 @@ class DropDetection_Difference(DropDetection):
         return [(x1, x2)], detected
 
 if __name__ == "__main__":
-    image = "/media/d25u2/Dont/RudExp/S1/S1-26-30d-01/frames/frame_000115.png"
+    image = "/media/d25u2/Dont/Viscosity/280/S5-S2.01_S20/D175220_01_4.46/databases/frame_000115.png"
 
     
 

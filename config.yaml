@@ -1,3 +1,22 @@
+Root_Address: "/run/media/roboprocessing/Data/Samba-Share"
+# First layer processing parameters
+Video: 
+  cropping: True # Since we have multi view image we crop 
+  cropping_properties: 
+    WIDTH: 1000
+    HEIGHT: 188
+    X: 750
+    Y: 0 
+  Original_image:
+    WIDTH: 2048
+    HEIGHT: 192
+    
+single_FolderDropNormalizer:
+  Left_boundary_ratio: 0.90
+  Right_boundary_ratio: 0.06
+
+
+
 image_extension : "*.png"
 frame_rate    : 30 # fps video in the folder
 frame_folder  : "frames"

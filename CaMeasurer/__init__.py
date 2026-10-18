@@ -72,22 +72,32 @@ import datetime
 import threading
 import time
 
-def process_one_file(file_number: int, name_files: List[str],
-                     _df: "pd.DataFrame | None" = None,
-                     _address: "str | None" = None) -> Dict[str, Any]:
-    """Process a single file (executed inside workers).
-
-    _df and _address override the worker-global df/address when provided.
-    This avoids the race condition in _update_pool_globals.
+def process_one_file(file_number: int,
+                     name_files: List[str],
+                     run_ctx: Dict[str, Any] | None = None) -> Dict[str, Any] | None:
     """
-    _run_df      = _df      if _df      is not None else df
-    _run_address = _address if _address is not None else address
+    Process a single file (executed inside workers).
+
+    Per-folder state (detections df, output address, ...) must be passed via ``run_ctx``
+    when using a persistent pool: worker globals are not reliably refreshed between
+    folders, and a stale df/address makes frames fail ("not found in the CSV") or be
+    measured with the previous folder's endpoints and saved into its SR_edge.
+    Globals are only used as a fallback by the single-process helpers.
+    """
+    if run_ctx is not None:
+        _df                 = run_ctx["df"]
+        _address            = run_ctx["address"]
+        _kernel             = run_ctx["kernel"]
+        _cm_on_pixel_ratio  = run_ctx["cm_on_pixel_ratio"]
+    else:
+        _df, _address, _kernel, _cm_on_pixel_ratio = df, address, kernel, cm_on_pixel_ratio
+
     try:
         arggs = base_function_process(
-            _run_df,
+            _df,
             name_files,
             file_number,
-            kernel,
+            _kernel,
             model=model,
         )
 
@@ -97,12 +107,12 @@ def process_one_file(file_number: int, name_files: List[str],
          i_poly_right_rotated, j_poly_right_rotated) = arggs
 
         distance = (x_cropped) * 3
-        _address = os.path.join(_run_address, 'SR_edge', os.path.basename(str(name_files[file_number])))
+        save_address = os.path.join(_address, 'SR_edge', os.path.basename(str(name_files[file_number])))
 
 
         adv, rec, rec_angle_point, adv_angle_point, contact_line_length, \
         x_center, y_center, middle_angle_degree = visualize(
-            _address,
+            save_address,
             distance + np.array(i_list), j_list,
             distance + np.array(i_left), j_left,
             distance + np.array(i_right), j_right,
@@ -111,7 +121,7 @@ def process_one_file(file_number: int, name_files: List[str],
             x_cropped,
             distance + np.array(i_poly_left_rotated), j_poly_left_rotated,
             distance + np.array(i_poly_right_rotated), j_poly_right_rotated,
-            cm_on_pixel=cm_on_pixel_ratio, middle_line_switch=1, dpi=100
+            cm_on_pixel=_cm_on_pixel_ratio, middle_line_switch=1, dpi=100
         )
 
         return {
@@ -301,17 +311,10 @@ def _barrier_func():
     return None
 
 
-def _update_worker_globals(args):
-    """Executed inside each worker to update global variables between runs."""
-    global df, address, kernel, num_px_ratio, cm_on_pixel_ratio, fps
-    df, address, kernel, num_px_ratio, cm_on_pixel_ratio, fps = args
-    return True
-
-
 class processes_mp_shared:
     """
-    Multiprocessing drop analysis with persistent YOLO models,
-    but re-updates all per-run variables (address, df, etc.) each call.
+    Multiprocessing drop analysis with persistent models (one per worker).
+    Per-run variables (address, df, etc.) are sent with every task, not stored in worker globals.
     """
 
     def __init__(self, num_workers: int = 15):
@@ -340,17 +343,10 @@ class processes_mp_shared:
             # print("♻️ Reusing existing worker pool (YOLO already loaded).")
             pass
 
-    def _update_pool_globals(self, shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps):
-        """Send new global parameters to all workers."""
-        # print(f"🔄 Updating worker globals for {shared_address}...")
-        args = (shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
-        # Send updates to all workers
-        list(self._pool.map(_update_worker_globals, [args] * self.num_workers))
-
     def run(self, shared_address: str):
         """
         Run one processing batch.
-        Keeps YOLO loaded across runs, updates per-run globals in all workers.
+        Keeps models loaded across runs; per-run state is passed with each task.
         """
         # if (os.path.isfile(os.path.join(shared_address, 'SR_result', 'result.csv')) and
         #     os.path.isfile(os.path.join(shared_address, 'SR_edge', 'result.mp4'))):
@@ -370,20 +366,30 @@ class processes_mp_shared:
         # prepare args
         init_args = (shared_df, shared_address, kernel, num_px_ratio, cm_on_pixel_ratio, fps)
 
-        # 1. ensure pool exists (model is initialised once per worker at creation)
+            # 1. ensure pool exists
         self._ensure_pool(init_args=init_args)
 
-        # 2. pass df and address explicitly via partial — no per-worker global update needed
-        worker_func = partial(process_one_file, name_files=name_files,
-                              _df=shared_df, _address=shared_address)
+        # 2. per-run state travels with every task (worker globals may be stale from a previous folder)
+        run_ctx = {
+            "df": shared_df,
+            "address": shared_address,
+            "kernel": kernel,
+            "cm_on_pixel_ratio": cm_on_pixel_ratio,
+        }
 
-        # 3. run processing
+        # 3. define worker func
+        worker_func = partial(process_one_file, name_files=name_files, run_ctx=run_ctx)
+
+        # 4. run processing
         results = []
 
         for res in tqdm.tqdm(self._pool.imap_unordered(worker_func, range(len(name_files))),
                              total=len(name_files), desc=f"Processing {shared_address}"):
             if res is not None:
                 results.append(res)
+
+        # Step 5: wait for all workers to finish
+        self._pool.apply(_barrier_func)
 
         # Step 6: aggregate results
         if not results:

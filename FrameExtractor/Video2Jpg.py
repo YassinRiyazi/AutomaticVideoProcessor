@@ -232,7 +232,8 @@ def ffmpeg_frame_extractor(
                             grayscale: bool = True,
                             health_check: bool = False,
                             min_height: int = 130,
-                            threads: int|None = None
+                            threads: int|None = None,
+                            crop: list[int] | None = None
                         ) -> None:
     """
     High-level frame extractor that orchestrates probing, directory setup,
@@ -247,6 +248,7 @@ def ffmpeg_frame_extractor(
         grayscale (bool): Convert frames to grayscale.
         health_check (bool): Verify each frame after extraction.
         min_height (int): Minimum frame height; pad if below.
+        crop (list[int] | None): Crop rectangle [x, y, width, height] if specified.
 
     Returns:
         None: Frames are saved to the specified output pattern.
@@ -282,6 +284,10 @@ def ffmpeg_frame_extractor(
 
     if threads is None:
         threads = 0
+
+    if crop is not None:
+        x, y, w, h = crop
+        vf += f",crop={w}:{h}:{x}:{y}"
         
     run_ffmpeg_extraction(input_video_path, output_pattern, vf, use_cuda, grayscale, threads)
     # print(f"Frames extracted to {out_dir} at {fps} fps ({'grayscale' if grayscale else 'color'}).")

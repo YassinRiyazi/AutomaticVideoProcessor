@@ -17,13 +17,20 @@ def singleFolderDropNormalizer(images: list[str],
     It removes images that do not meet the criteria defined by the YOLO model.
     """
     in_detector = detector() if callable(detector) else detector
-        
+
+    width = BaseUtils.config["Video"]["cropping_properties"]["WIDTH"]
+
+    Left_boundary = int(BaseUtils.config["single_FolderDropNormalizer"]["Left_boundary_ratio"] * width)
+    Right_boundary = int(BaseUtils.config["single_FolderDropNormalizer"]["Right_boundary_ratio"] * width)
     def _forward(images: list[str]):
         """
         Forward pass through the YOLO model.
         Returns the bounding box coordinates.
         """
         for image in tqdm.tqdm(images):
+            if not os.path.exists(image):
+                # TODO: Log that the image does not exist before continuing
+                continue
             results, has_drop = in_detector.detect_drops(image)
             
             #33 Delete empty images
@@ -34,7 +41,7 @@ def singleFolderDropNormalizer(images: list[str],
             for file_idx, res in enumerate(results):
                 x1, x2 = in_detector.horizontal_bound_extractor(res)
 
-                if x2 < 1200:
+                if x2 < Left_boundary:
                     return True
                 else:
                     os.remove(image)
@@ -45,6 +52,9 @@ def singleFolderDropNormalizer(images: list[str],
         This function is not used in this context but is kept for consistency.
         """
         for image in reversed(images):
+            if os.path.exists(image) is False:
+                # TODO: Log that the image does not exist before returning
+                return None
             results, has_drop = in_detector.detect_drops(image)
             
             if not has_drop:
@@ -53,7 +63,7 @@ def singleFolderDropNormalizer(images: list[str],
 
             for file_idx, res in enumerate(results):
                 x1, x2 = in_detector.horizontal_bound_extractor(res)
-                if x1 > 40:
+                if x1 > Right_boundary:
                     return True
                 else:
                     os.remove(image)

@@ -65,7 +65,11 @@ import pandas as pd
 import numpy                as np
 import matplotlib.pyplot    as plt
 from numpy import typing as npt
-from typing import Dict, List, Tuple, Type, Union # type: ignore
+from typing import Dict, List, Tuple, Type, Union, Optional, TYPE_CHECKING # type: ignore
+
+if TYPE_CHECKING:
+    from ..drop_detection import DropDetection_YOLO
+
 def walk_forward(array: npt.NDArray[np.float64],
                  steep: float = 0.0025) -> int:
     """
@@ -274,6 +278,27 @@ def detectionV2(image:cv2.Mat,
 
     return beginning, endpoint
 
+def detectionV3(image: str,
+                detector: Optional["DropDetection_YOLO"] = None) -> tuple[int, int]:
+    """
+    Detect a drop with YOLO from an image path and return (right, left) bounds.
+    Pass a detector to reuse its model across frames.
+    Raises ValueError when no drop is detected or its horizontal bounds are invalid.
+    """
+    if detector is None:
+        from BaseUtils.drop_detection import DropDetection_YOLO
+        detector = DropDetection_YOLO()
+
+    bounds, detected = detector.detect_drops(image)
+    if not detected or bounds is None:
+        raise ValueError(f"No drop detected in the image: {image}")
+
+    endpoint, beginning = detector.horizontal_bound_extractor(bounds)
+    if endpoint < 0 or endpoint >= beginning:
+        raise ValueError(f"Invalid YOLO crop coordinates for {image}: {endpoint}, {beginning}")
+
+    return beginning, endpoint
+
 def extendLength(array: npt.NDArray[np.float64],
                  new_length: int) -> npt.NDArray[np.float64]:
     """
@@ -332,8 +357,7 @@ def draw_bounds(image:cv2.Mat,
 def crop_and_save_image(image: npt.NDArray[np.float64],
                         output_path: str, 
                         x1: int, x2: int,
-                        tolerance: int = 3,
-                        y1: int = 0, y2: int = 0) -> None:
+                        tolerance: int = 3) -> None:
     """
     Crops a region from the input image and saves it to the output path.
 
@@ -342,9 +366,7 @@ def crop_and_save_image(image: npt.NDArray[np.float64],
         output_path (str): Path to save the cropped image.
         x1 (int): Top-left x-coordinate.
         x2 (int): Bottom-right x-coordinate.
-        y1 (int): Top-left y-coordinate.
-        y2 (int): Bottom-right y-coordinate.
-        tolerance (int): Number of pixels to extend the crop region on each side (default: 3).
+
     Raises:
         ValueError: If the crop coordinates are invalid or image cannot be loaded.
 
@@ -355,7 +377,7 @@ def crop_and_save_image(image: npt.NDArray[np.float64],
     if x1 >= x2:
         raise ValueError("Invalid crop coordinates: x1 >= x2 or y1 >= y2")
 
-    cropped = image[-y1:, x1-tolerance:x2+tolerance]
+    cropped = image[:, x1-tolerance:x2+tolerance]
     cropped = cv2.bitwise_not(cropped)
     cv2.imwrite(output_path, cropped)
     return None
@@ -440,8 +462,6 @@ class DetectEdgeSave(Detect_Template):
         with open(os.path.join(SaveAddressCSV, 'detections.pkl'), 'wb') as f:
             pickle.dump(self.rows, f)
   
-
-
 def Main(experiment: str,
          SaveAddress: str,
          SaveAddressCSV: str,
@@ -451,29 +471,23 @@ def Main(experiment: str,
          tolerance_width: float = 1.13,
          _morphologyEx: bool = True,
          Detect: Type[Detect_Template] = DetectCropSave) -> None:
-    
-    try:
-        
-        from ..drop_detection import DropDetection_YOLO as _YOLO
-    except ImportError:
-        from drop_detection import DropDetection_YOLO as _YOLO
-
     """
-    Crops all images for a single experiment folder and saves crop info to CSV.
+    Crops all images using YOLO and saves crop info to CSV.
+    The scale, width and morphology parameters are retained for API compatibility;
+    YOLO uses the original image and returns full-resolution horizontal bounds.
 
-    Caution: 
-        Adaptive approach to detect drops in images.
-        In this function width of the detected drop should be around 300 pixels or 115% of the image width. other wise the steep value will be adjusted to 0.005 from 0.0025. Some time a small drop in the end of slide can be sitting and that is enough to cause problems in the detection. We end up with a really wide image.
+    Caution:
+        Processing stops if YOLO cannot detect a drop in any frame.
 
     args:
         experiment (str): Path to the experiment folder containing images.
         SaveAddress (str): Optional path to save cropped images.
         SaveAddressCSV (str): Optional path to save CSV file with crop info.
         extension (str): File extension of images to process (default: '.png').
-        scaleDownFactor_x (int): Factor to scale down the images for processing.
-        drop_width (int): Initial width of the drop to be detected. According to my experiment it is usually 150 in beginning and goes up to 450 for drops with surfactant.
-        tolerance_width (float): Tolerance width for drop detection (default: 1.13).
-        _morphologyEx (bool): Whether to apply morphologyEx operation on the image (default: False).
+        scaleDownFactor_x (int): Legacy SUM parameter; unused by YOLO.
+        drop_width (int): Legacy SUM parameter; unused by YOLO.
+        tolerance_width (float): Legacy detector parameter forwarded to Detect.forward.
+        _morphologyEx (bool): Legacy SUM parameter; unused by YOLO.
 
     raises:
         ValueError: If no images are found in the experiment folder.
@@ -503,60 +517,32 @@ def Main(experiment: str,
         if os.path.isfile(metadata_path):
             os.remove(metadata_path)
 
-    Detector = Detect()
-    # _yolo_fallback = None
-    _yolo_fallback = _YOLO()
+    from BaseUtils.drop_detection import DropDetection_YOLO
 
-    rows: list[Dict[str, Union[str, int]]] = []
+    Detector = Detect()
+    yolo_detector = DropDetection_YOLO()
+    
     try:
         for image in images:
-            frame     = cv2.imread(image)
-            _image      = frame.copy()
+            frame = cv2.imread(image)
+            if frame is None:
+                raise ValueError(f"Could not load image: {image}")
+            _image = frame.copy()
 
-            if len(frame.shape) == 3:
-                frame     = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            if _morphologyEx:
-                frame     = cv2.morphologyEx(frame, cv2.MORPH_CLOSE, kernel)
+            beginning, endpoint = detectionV3(image=image, detector=yolo_detector)
 
-            # beginning, endpoint = detectionV2(image = frame,
-            #                                     scaleDownFactor = scaleDownFactor_x,
-            #                                     drop_width = drop_width)
+            Detector.forward(image=image,
+                            _image=_image,
+                            SaveAddress=SaveAddress,
+                            endpoint=endpoint,
+                            beginning=beginning,
+                            tolerance_width=tolerance_width)
 
-            # if beginning - endpoint > 1000:
-
-            yolo_box, yolo_found = _yolo_fallback.detect_drops(image)
-            if yolo_found:
-                endpoint,y1, beginning, y2 = _yolo_fallback.bound_extractor(yolo_box)
-
-            # drop_width = int (tolerance_width * (beginning - endpoint))
-
-            # Detector.forward(image,
-            #                 _image,
-            #                 SaveAddress,
-            #                 endpoint,
-            #                 beginning,
-            #                 tolerance_width)
-
-            img_name    = os.path.basename(image)
-            save_path   = os.path.join(SaveAddress, img_name)
-
-            if (y2-y1) < 200:
-                y1 = 200
-            else:
-                y1 = 300
-            crop_and_save_image(_image, save_path, endpoint, beginning, tolerance=15,
-                                y1=y1, y2=y2)
-
-            rows.append({'image': img_name, 'endpoint': endpoint, 'beginning': beginning})
-
-        # Detector.Finish(SaveAddressCSV)
-        csv_path = os.path.join(SaveAddressCSV, 'detections.csv')
-        df = pd.DataFrame(rows)
-        df.to_csv(csv_path, index=False)
+        Detector.Finish(SaveAddressCSV)
 
     except Exception as e:
-        print(f"Error processing {experiment}: {e}")
-        Detector.CleanUp([SaveAddress, SaveAddressCSV])
+        raise e
+        # Detector.CleanUp([SaveAddress, SaveAddressCSV])
     
     return None
 
