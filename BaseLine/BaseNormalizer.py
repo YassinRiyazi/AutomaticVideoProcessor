@@ -193,6 +193,7 @@ def line_finder(image_address:str,
 def process_image(filepath: str, 
                   rotation_matrix: NDArray[np.float64],
                   cropped_height:int,
+                  SECONDARY_ADDRESS: str = "side",
                   output_path: str|None = None,
                   ) -> None:
     """
@@ -236,13 +237,16 @@ def process_image(filepath: str,
     # _rotated_image = cv2.morphologyEx(_rotated_image, cv2.MORPH_CLOSE, kernel)
     cv2.imwrite(os.path.join(output_path, os.path.basename(filepath)), _rotated_image)
 
-def folderBaseLineNormalizer(experiment: str, 
+def folderBaseLineNormalizer(experiment: str,
+                             SECONDARY_ADDRESS: str = "side",
                              output_path: str | None = None,
                              verbose: bool = False
                              ) -> None:
-        files = BaseUtils.ImageLister(experiment)
+        files = BaseUtils.ImageLister(experiment, SECONDARY_ADDRESS=SECONDARY_ADDRESS)
+        if len(files) < 3:
+            raise FileNotFoundError(f"Not enough frames ({len(files)}) in {os.path.join(experiment, SECONDARY_ADDRESS, str(BaseUtils.config['frame_folder']))}; extract frames first.")
 
-        output_path = os.path.join(experiment, str(BaseUtils.config["rotated_frames_folder"]))
+        output_path = os.path.join(experiment, SECONDARY_ADDRESS, str(BaseUtils.config["rotated_frames_folder"]))
 
         if len(glob.glob(os.path.join(output_path, str(BaseUtils.config["image_extension"])))) == len(files):
             pass
@@ -250,12 +254,12 @@ def folderBaseLineNormalizer(experiment: str,
             if not os.path.isdir(output_path):
                 os.makedirs(output_path, exist_ok=True)
         
-        image = cv2.imread(os.path.join(experiment, files[2]), cv2.IMREAD_GRAYSCALE)
+        image = cv2.imread(files[2], cv2.IMREAD_GRAYSCALE)
         if image is None:
-            raise FileNotFoundError(f"Image not found or unable to load: {os.path.join(experiment, files[2])}")
+            raise FileNotFoundError(f"Image not found or unable to load: {files[2]}")
         (h, w) = image.shape[:2]
         center = (w // 2, h // 2)
-        angle,_shape, rotated_image = fit_and_rotate_image(os.path.join(experiment, files[2]),results=True)
+        angle,_shape, rotated_image = fit_and_rotate_image(files[2],results=True)
         del _shape, rotated_image
         
         rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
@@ -267,7 +271,7 @@ def folderBaseLineNormalizer(experiment: str,
         if verbose:
             print(f"Rotation angle: {angle:.2f} degrees, cropped_height: {cropped_height}")
         with multiprocessing.Pool(processes=int(multiprocessing.cpu_count() * 0.75)) as pool:
-            pool.starmap(process_image, [(file, rotation_matrix,cropped_height) for file in files])
+            pool.starmap(process_image, [(file, rotation_matrix,cropped_height, SECONDARY_ADDRESS, output_path) for file in files])
 
 def bottom_row_unifierGRAY(image:NDArray[np.uint8],target_height:int,
                            pad_bottom:int = 5) -> NDArray[np.uint8]:

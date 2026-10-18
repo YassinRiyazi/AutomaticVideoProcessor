@@ -35,9 +35,9 @@ class BaseLine:
     Description:
         BaseLine class provides methods to fit and rotate images based on detected lines. 
     """
-    def __init__(self) -> None:
-        pass
+    def __init__(self, SECONDARY_ADDRESS: str = "side") -> None:
+        self.SECONDARY_ADDRESS = SECONDARY_ADDRESS
 
     def Forward(self, experiment: str
                              ) -> None:
-        folderBaseLineNormalizer(experiment = experiment)
+        folderBaseLineNormalizer(experiment = experiment, SECONDARY_ADDRESS = self.SECONDARY_ADDRESS)

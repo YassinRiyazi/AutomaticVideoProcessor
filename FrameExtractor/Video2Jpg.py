@@ -227,6 +227,7 @@ def ffmpeg_frame_extractor(
                             input_video_path: Union[str, os.PathLike[str]],
                             output_frame_pattern: Optional[Union[str, os.PathLike[str]]] = None,
                             fps: int = 1,
+                            secondary_address: str = "side",
                             wipe: bool = True,
                             use_cuda: bool = False,
                             grayscale: bool = True,
@@ -263,7 +264,7 @@ def ffmpeg_frame_extractor(
     ext = 'png' if grayscale else 'jpg'
     if output_frame_pattern is None:
         video_dir = os.path.dirname(str(input_video_path))
-        out_dir = os.path.join(video_dir, 'frames')
+        out_dir = os.path.join(video_dir, secondary_address, 'frames')
         output_pattern = os.path.join(out_dir, f'frame_%06d.{ext}')
 
     else:

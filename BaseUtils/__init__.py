@@ -18,10 +18,15 @@ else:
 
 def ImageLister(FolderAddress: str,
                 frameAddress: str = str(config["frame_folder"]),
-                extension: str = str(config["image_extension"])) -> list[str]:
+                extension: str = str(config["image_extension"]),
+                *,
+                SECONDARY_ADDRESS: str|None = None) -> list[str]:
         """
         Listing images in the frames directory
         """
+        if SECONDARY_ADDRESS is not None:
+            FolderAddress = os.path.join(FolderAddress, SECONDARY_ADDRESS)
+
         if not os.path.exists(os.path.join(FolderAddress, frameAddress)):
             raise FileNotFoundError(colorama.Fore.RED + f"No frames directory found in {FolderAddress}. Please extract frames first." + colorama.Style.RESET_ALL)
 
@@ -34,16 +39,19 @@ def ImageLister(FolderAddress: str,
         return images
 
 def FileIndexChecker( FolderAddress: str,
-                     frameAddress: str = str(config["frame_folder"])):
+                     frameAddress: str = str(config["frame_folder"]),
+                     *,
+                     SECONDARY_ADDRESS: str|None = None):
     """
     Checking images are sequentially indexed without missing numbers
     """
     images = ImageLister(FolderAddress=FolderAddress,
-                         frameAddress=frameAddress)
+                         frameAddress=frameAddress,
+                         SECONDARY_ADDRESS=SECONDARY_ADDRESS)
 
     if len(images) == 0:
         raise FileNotFoundError(
-            colorama.Fore.RED + f"No frame images found in {os.path.join(FolderAddress, frameAddress)}." + colorama.Style.RESET_ALL
+            colorama.Fore.RED + f"No frame images found in {os.path.join(FolderAddress, SECONDARY_ADDRESS or '', frameAddress)}." + colorama.Style.RESET_ALL
         )
 
     # extracting image index from filename with regex and if there is missing index raise error

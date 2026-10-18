@@ -1,12 +1,16 @@
-Root_Address: "/run/media/roboprocessing/Data/Samba-Share"
+Root_Address: "/run/media/d25u2/Dont/output/2026-10-16_18-12-14-317689"
 # First layer processing parameters
 Video: 
   cropping: True # Since we have multi view image we crop 
-  cropping_properties: 
+  cropping_properties_side: 
     WIDTH: 1000
     HEIGHT: 188
     X: 750
     Y: 0 
+  cropping_properties_front: 
+    WIDTH: 240
+    X: 283
+    
   Original_image:
     WIDTH: 2048
     HEIGHT: 192
@@ -33,6 +37,9 @@ Experiment_Parameters:
   fps_experiment: 4000 # fps of the original experiment video # Now in the FrameExtractor we can detect it automatically,
   # TODO: update this value after extracting frames and checking the real fps
   cm_on_pixel_ratio: 0.0039062
+  # Front view scale (DropGeometry). Constant approximation: the true front scale changes ~24% along the slide (perspective).
+  # 0.0039062 / 0.86, where 0.86 is the median front/side apex-height ratio in tilt-20-rep-001/002. Replace with a direct calibration if available.
+  front_cm_on_pixel_ratio: 0.004542
   num_px_ratio: 1 #0.0039062
 
 PreProcessing:

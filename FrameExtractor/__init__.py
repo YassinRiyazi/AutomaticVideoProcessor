@@ -52,10 +52,12 @@ VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.mkv', '.mpeg', '.mpg', '.m4v')
 
 class FrameExtractor:
     def __init__(self,
-                 InPlaceOutput = False) -> None:
+                 InPlaceOutput: bool = False,
+                 SECONDARY_ADDRESS: str = "side") -> None:
         init()
         self.frameAddress = BaseUtils.config["frame_folder"]
         self.InPlaceOutput = InPlaceOutput
+        self.SECONDARY_ADDRESS = SECONDARY_ADDRESS
 
     def resolve_video_path(self, path: str) -> str:
         if os.path.isdir(path):
@@ -119,22 +121,34 @@ class FrameExtractor:
         if fps is None:
             fps = self.ffprobe_fps(video_path)
 
-        frame_dir = os.path.join(os.path.dirname(video_path), str(self.frameAddress))
+        frame_dir = os.path.join(os.path.dirname(video_path), self.SECONDARY_ADDRESS, str(self.frameAddress))
         if os.path.exists(frame_dir) and wipe == False:
             print(colorama.Fore.YELLOW + f"Frames directory already exists in {FolderAddress}. Use wipe=True to overwrite." + colorama.Style.RESET_ALL)
             return 0
 
-        _Ccrop = [
-            BaseUtils.config["Video"]["cropping_properties"]["X"], 
-            BaseUtils.config["Video"]["cropping_properties"]["Y"], 
-            BaseUtils.config["Video"]["cropping_properties"]["WIDTH"], 
-            BaseUtils.config["Video"]["cropping_properties"]["HEIGHT"]
-         ]
+        if self.SECONDARY_ADDRESS == "side":
+            _Ccrop = [
+                int(BaseUtils.config["Video"]["cropping_properties_side"]["X"]), 
+                int(BaseUtils.config["Video"]["cropping_properties_side"]["Y"]), 
+                int(BaseUtils.config["Video"]["cropping_properties_side"]["WIDTH"]), 
+                int(BaseUtils.config["Video"]["cropping_properties_side"]["HEIGHT"])
+            ]
+        elif self.SECONDARY_ADDRESS == "front":
+            _Ccrop = [
+                int(BaseUtils.config["Video"]["cropping_properties_front"]["X"]), 
+                int(BaseUtils.config["Video"]["cropping_properties_side"]["Y"]), 
+                int(BaseUtils.config["Video"]["cropping_properties_front"]["WIDTH"]), 
+                int(BaseUtils.config["Video"]["cropping_properties_side"]["HEIGHT"])
+            ]
+        else:
+            #TODO: Implement cropping for other SECONDARY_ADDRESS values if needed
+            raise ValueError(f"Unsupported SECONDARY_ADDRESS: {self.SECONDARY_ADDRESS}")
 
         ffmpeg_frame_extractor(
             video_path,
             output_frame_pattern=output_frame_pattern,
             fps=fps,
+            secondary_address=self.SECONDARY_ADDRESS,
             wipe=wipe,
             use_cuda=use_cuda,
             grayscale=grayscale,
@@ -147,7 +161,7 @@ class FrameExtractor:
         """
         Checking images are B&W, if not convert them to B&W
         """
-        images = BaseUtils.ImageLister(FolderAddress=FolderAddress)
+        images = BaseUtils.ImageLister(FolderAddress=FolderAddress, SECONDARY_ADDRESS=self.SECONDARY_ADDRESS)
         
         for img_file in images:    
             img = Image.open(img_file)
@@ -160,7 +174,7 @@ class FrameExtractor:
         """
         Checking images are readable and non zero size
         """
-        images = BaseUtils.ImageLister(FolderAddress=FolderAddress)
+        images = BaseUtils.ImageLister(FolderAddress=FolderAddress, SECONDARY_ADDRESS=self.SECONDARY_ADDRESS)
         
         for img_file in (images):    
             try:
@@ -176,15 +190,15 @@ class FrameExtractor:
                 os.remove(img_file)
 
     def Bottom_row_checker(self, FolderAddress: str):
-        images = BaseUtils.ImageLister(FolderAddress=FolderAddress)    
+        images = BaseUtils.ImageLister(FolderAddress=FolderAddress, SECONDARY_ADDRESS=self.SECONDARY_ADDRESS)
 
         for img_file in (images[::4]):
             img = Image.open(img_file)
             img_array = np.array(img)
             bottom_row = img_array[-1, :].mean(axis=-1)  # Average across color channels if present
-            # if bottom_row > 100:  # Threshold for "mostly white"
-            #     # raise ValueError(colorama.Fore.RED + f"The sample line is not visible; thus, baseline detection will fail for: {img_file}" + colorama.Style.RESET_ALL)
-            #     BaseUtils.log(colorama.Fore.YELLOW + f"Warning: The sample line is not visible in {img_file}. Baseline detection may fail." + colorama.Style.RESET_ALL)
+            if bottom_row > 100:  # Threshold for "mostly white"
+                raise ValueError(colorama.Fore.RED + f"The sample line is not visible; thus, baseline detection will fail for: {img_file}" + colorama.Style.RESET_ALL)
+                BaseUtils.log(colorama.Fore.YELLOW + f"Warning: The sample line is not visible in {img_file}. Baseline detection may fail." + colorama.Style.RESET_ALL)
 
     def Forward(self,
                 FolderAddress: str,
@@ -200,9 +214,8 @@ class FrameExtractor:
             frames_folder = out_dir
             output_pattern = os.path.join(frames_folder, 'frame_%06d.png')
         else:
-            frames_folder = os.path.join(FolderAddress, str(self.frameAddress))
+            frames_folder = os.path.join(FolderAddress,self.SECONDARY_ADDRESS, str(self.frameAddress))
             output_pattern = None
-
         # run extraction (pass output_pattern when provided)
         _ = self.extract_frames(FolderAddress=FolderAddress, fps=fps, output_frame_pattern=output_pattern)
 
@@ -210,7 +223,7 @@ class FrameExtractor:
         self.BandGMaker(FolderAddress=FolderAddress)
         self.Bottom_row_checker(FolderAddress=FolderAddress)
         self.HealthChecker(FolderAddress=FolderAddress)
-        BaseUtils.FileIndexChecker(FolderAddress=FolderAddress)
+        BaseUtils.FileIndexChecker(FolderAddress=FolderAddress, SECONDARY_ADDRESS=self.SECONDARY_ADDRESS)
 
 
 if __name__ == "__main__":

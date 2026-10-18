@@ -1,30 +1,5 @@
-"""
-    Date    : 2025-09-30
-    Author  : Yassin Riyazi
-    Project : Automatic Video Processor (AVP)
-    File    : AVP.py
-    Version : 1.0.0
-    License : GNU General Public License v3.0
-
-    Description:
-        This is the main file of the Automatic Video Processor (AVP) project. 
-        It orchestrates the various components of the AVP system to process videos automatically.
-
-    Components:
-        + Frame Extractor.Extractor (Folder Address:str|os.pathlike[str]): Void []
-
-        + Base Line detection.Forward ()
-
-        + Utilities.Empty_frames_remover()
-        + Utilities.Normalizing_drop_Position()
-        + Utilities.Detect&crop()
-
-        + SROF_4S.DF_generation(): Void []
-        + SROF_4S.Result_video_maker(): Void []
-
-        + CleanUP(): Void []
-"""
 import  os
+import  pathlib
 import  time
 import  glob
 import  signal
@@ -32,50 +7,49 @@ import  tqdm
 import  shutil
 import  argparse
 import  BaseLine
+import  BaseUtils
 import  Utilities
 import  CaMeasurer
+import  DropGeometry
 import  FrameExtractor
 from    cleanUp         import  create_video_from_images # type:ignore
 
-VIDEO_SOURCE_GLOB = os.path.join("/run/media/d25u2/Dont/output/2026-10-16_18-12-14-317689", "*")
+SECONDARY_ADDRESS: str = "front"
+VIDEO_SOURCE_GLOB: str = os.path.join(str(BaseUtils.config['Root_Address']), "*")
 
 
 def cleanUP(_folder: str|os.PathLike[str]) -> None:
-    shutil.rmtree(os.path.join(_folder, "frames"),          ignore_errors=True)
-    shutil.rmtree(os.path.join(_folder, "frames_rotated"),  ignore_errors=True)
-    shutil.rmtree(os.path.join(_folder, "databases"),       ignore_errors=True)
-    shutil.rmtree(os.path.join(_folder, "SR_edge"),         ignore_errors=True)
-    os.remove(os.path.join(_folder, 'error_log.txt')) if os.path.isfile(os.path.join(_folder, 'error_log.txt')) else None
-    os.remove(os.path.join(_folder, 'result.csv')) if os.path.isfile(os.path.join(_folder, 'result.csv')) else None
-    os.remove(os.path.join(_folder, 'result_video.mkv')) if os.path.isfile(os.path.join(_folder, 'result_video.mkv')) else None
+    shutil.rmtree(os.path.join(_folder, SECONDARY_ADDRESS, "frames"),          ignore_errors=True)
+    shutil.rmtree(os.path.join(_folder, SECONDARY_ADDRESS, "frames_rotated"),  ignore_errors=True)
+    shutil.rmtree(os.path.join(_folder, SECONDARY_ADDRESS, "databases"),       ignore_errors=True)
+    shutil.rmtree(os.path.join(_folder, SECONDARY_ADDRESS, "SR_edge"),         ignore_errors=True)
 
-def cleanStart(Video_list: list[str] = sorted(glob.glob("/media/Dont/Teflon-AVP/*/*/*"))):  
+    for name in ('error_log.txt', 'result.csv', 'result_corrected.csv', '.done'):
+        path = os.path.join(_folder, SECONDARY_ADDRESS, name)
+        if os.path.isfile(path):
+            os.remove(path)
+
+    for log in glob.glob(os.path.join(_folder, SECONDARY_ADDRESS, '*.log')):
+        os.remove(log)
+
+def cleanStart(Video_list: list[str] = sorted(glob.glob(VIDEO_SOURCE_GLOB))):  
     for _folder in tqdm.tqdm(Video_list):
         cleanUP(_folder)
-
-        os.remove(os.path.join(_folder, '.done')) if os.path.isfile(os.path.join(_folder, '.done')) else None
-        
-        logs = glob.glob(os.path.join(_folder,'*.log'))
-        for log in logs:
-            os.remove(log)
-
 
 def discover_folders(pattern: str = VIDEO_SOURCE_GLOB) -> list[str]:
     """List candidate video folders (directories only), sorted."""
     Video_list = sorted(glob.glob(pattern))
     return [folder for folder in Video_list if os.path.isdir(folder)]
 
-
 def is_pending(_folder: str|os.PathLike[str]) -> bool:
     """True if a folder has not been processed yet and has no unresolved error/log files."""
-    if os.path.isfile(os.path.join(_folder, '.done')):
+    if os.path.isfile(os.path.join(_folder, SECONDARY_ADDRESS, '.done')):
         return False
-    if os.path.isfile(os.path.join(_folder, 'error_log.txt')):
+    if os.path.isfile(os.path.join(_folder, SECONDARY_ADDRESS, 'error_log.txt')):
         return False
-    if len(glob.glob(os.path.join(_folder, '*.log'))) > 0:
+    if len(glob.glob(os.path.join(_folder, SECONDARY_ADDRESS, '*.log'))) > 0:
         return False
     return True
-
 
 def get_max_mtime(_folder: str|os.PathLike[str]) -> float:
     """Most recent modification time of the folder itself or any file under it (recursive)."""
@@ -88,47 +62,59 @@ def get_max_mtime(_folder: str|os.PathLike[str]) -> float:
                 continue
     return latest
 
-
 def process_folder(_folder: str|os.PathLike[str], fe, bld, YOLO, S4) -> None:
-    """Run the full AVP pipeline on a single folder, logging (not raising) on failure."""
-    try:
-        cleanUP(_folder)
+    """Run the full AVP pipeline on a single folder, logging (not raising) on failure.
 
+    The video stays in `_folder`; every intermediate and result file is written to `_folder/SECONDARY_ADDRESS`.
+    """
+    address: str = os.path.join(_folder, SECONDARY_ADDRESS)
+    try:
         print(f"Processing folder: {_folder}")
 
-        # Phase 1: Frame Extraction
-        if not os.path.exists(os.path.join(_folder, 'frames')):
+        # Phase 1: Frame Extraction (reads the video in _folder, writes to address/frames)
+        if not os.path.exists(os.path.join(address, 'frames')):
             fe.Forward(_folder)
-        # Phase 2: Base Line Detection
-        if not os.path.exists(os.path.join(_folder, 'frames_rotated')):
+        # Phase 2: Base Line Detection (address/frames -> address/frames_rotated)
+        if not os.path.exists(os.path.join(address, 'frames_rotated')):
             bld.Forward(_folder)
 
-        # Phase 3: Utilities
-        YOLO.run(image_folder=_folder, skip=40)
-        YOLO.run(image_folder=_folder, skip=5)
+        # read indexes from "side/frames_rotated"
+        files = glob.glob(os.path.join(_folder, "side",'frames_rotated', '*'))
+        files.sort()  # Sort the files to maintain a consistent order
+        def filename_ext(file_path: str) -> str:
+            return int(os.path.splitext(file_path.split(os.sep)[-1].split("_")[-1])[0])
+        beginning_index = filename_ext(files[0]) if files else None
+        last_index = filename_ext(files[-1]) if files else None
+        files = glob.glob(os.path.join(_folder, SECONDARY_ADDRESS,'frames_rotated', '*'))
+        
+        # delete frames inside the range from beginning_index to last_index
 
-        Utilities.BaseUtils.FileIndexChecker(FolderAddress=_folder, frameAddress=str(Utilities.BaseUtils.config["rotated_frames_folder"]))
-        images = Utilities.BaseUtils.ImageLister(FolderAddress=_folder, frameAddress=str(Utilities.BaseUtils.config["rotated_frames_folder"]))
-        Utilities.singleFolderDropNormalizer(images, Utilities.BaseUtils.DropDetection_YOLO)  # type: ignore
-        Utilities.crop_Save(image_folder=_folder)
+        if beginning_index and last_index:
+            for file_path in files:
+                if  (filename_ext(file_path) < beginning_index) or \
+                    (filename_ext(file_path) > last_index):
+                    try:
+                        os.remove(file_path)
+                    except OSError:
+                        continue
+                else:
+                    pass
 
-        os.makedirs(os.path.join(_folder, 'SR_edge'), exist_ok=True)
+        # Phase 3: Drop geometry (front/frames_rotated -> front/result.csv)
+        DropGeometry.process_folder(address)
 
-        # Phase 4: 4S-SROF
-        S4.run(_folder)
-
-        _ = Utilities.position_velocity_correction(os.path.join(_folder, 'result.csv'))
-
-        if not os.path.isfile(os.path.join(_folder, 'error_log.txt')):
-            with open(os.path.join(_folder, '.done'), 'w') as f:
+        if not os.path.isfile(os.path.join(address, 'error_log.txt')):
+            with open(os.path.join(address, '.done'), 'w') as f:
                 f.write('Processing completed successfully.\n')
 
     except Exception as e:
         import BaseUtils.logException as logException
 
-        logger = logException.LogException(base_path=_folder)
+        # Log inside the side folder so is_pending() sees it and the folder is not retried endlessly
+        os.makedirs(address, exist_ok=True)
+        logger = logException.LogException(base_path=address)
         logger.log_exception(e, custom_message=f"Error processing folder: {_folder}", Verbose=True)
-        print(f"Error processing folder: {_folder}. Check error_log.txt for details.")
+        print(f"Error processing folder: {_folder}. Check the log in {address} for details.")
 
 
 class GracefulShutdown:
@@ -146,8 +132,8 @@ class GracefulShutdown:
 
 def main_loop(poll_interval: float = 60.0, stability_seconds: float = 60.0) -> None:
     """Continuously scan for new folders and process each once its contents stop changing."""
-    fe = FrameExtractor.FrameExtractor()
-    bld = BaseLine.BaseLine()
+    fe = FrameExtractor.FrameExtractor(SECONDARY_ADDRESS=SECONDARY_ADDRESS)
+    bld = BaseLine.BaseLine(SECONDARY_ADDRESS=SECONDARY_ADDRESS)
 
     YOLO = Utilities.YoloWalker(num_workers=5)
     S4 = CaMeasurer.processes_mp_shared(num_workers=8)
@@ -180,10 +166,14 @@ def main_loop(poll_interval: float = 60.0, stability_seconds: float = 60.0) -> N
                 process_folder(_folder, fe, bld, YOLO, S4)
                 stability_tracker.pop(_folder, None)
 
+                break
+            break
+
             for _ in range(int(poll_interval)):
                 if shutdown.requested:
                     break
                 time.sleep(1)
+                
     finally:
         YOLO.close()
         S4.close()
@@ -204,12 +194,13 @@ if __name__ == "__main__":
         else:
             cleanStart()
         print("cleanStart completed, exiting.")
+        
 
     if args.daemon:
         main_loop(poll_interval=args.poll_interval, stability_seconds=args.stability_seconds)
     else:
-        fe = FrameExtractor.FrameExtractor()
-        bld = BaseLine.BaseLine()
+        fe = FrameExtractor.FrameExtractor(SECONDARY_ADDRESS=SECONDARY_ADDRESS)
+        bld = BaseLine.BaseLine(SECONDARY_ADDRESS=SECONDARY_ADDRESS)
 
         YOLO = Utilities.YoloWalker(num_workers=5)
         S4   = CaMeasurer.processes_mp_shared(num_workers=8)
@@ -219,6 +210,7 @@ if __name__ == "__main__":
                 print(f"Skipping already-processed folder: {_folder}")
                 continue
             process_folder(_folder, fe, bld, YOLO, S4)
+            break
 
         YOLO.close()
         S4.close()

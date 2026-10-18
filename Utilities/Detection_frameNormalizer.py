@@ -18,7 +18,7 @@ def singleFolderDropNormalizer(images: list[str],
     """
     in_detector = detector() if callable(detector) else detector
 
-    width = BaseUtils.config["Video"]["cropping_properties"]["WIDTH"]
+    width = BaseUtils.config["Video"]["cropping_properties_side"]["WIDTH"]
 
     Left_boundary = int(BaseUtils.config["single_FolderDropNormalizer"]["Left_boundary_ratio"] * width)
     Right_boundary = int(BaseUtils.config["single_FolderDropNormalizer"]["Right_boundary_ratio"] * width)
