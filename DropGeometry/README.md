@@ -7,7 +7,7 @@ Measures the drop silhouette in leveled frames: height, width, base width, centr
 ```python
 import DropGeometry
 
-df = DropGeometry.process_folder("/path/to/experiment/front")   # writes front/result.csv
+df = DropGeometry.process_folder("/path/to/experiment/front")   # writes front/result.csv and front/SR_edge/*.png
 row = DropGeometry.measure_drop("/path/to/experiment/front/frames_rotated/frame_002262.png")
 ```
 
@@ -20,13 +20,14 @@ row = DropGeometry.measure_drop("/path/to/experiment/front/frames_rotated/frame_
    - **width:** widest row of the silhouette. **base_width:** width of the last row above the substrate.
    - **centroid:** area centroid of the filled silhouette. **centroid_height** is measured from the substrate line.
 4. `process_folder` measures every frame and writes the CSV. Frames that cannot be measured go to `error_log.txt`.
+5. `save_plots` saves one plot per frame to `<view>/SR_edge` (set `plot_folder=None` to skip it). The style matches the side view's `SR_edge` plots. Each plot shows only the sub-pixel boundary (black) and the features: height (green, vertical), width (green, at the widest row), base width (red, on the substrate) and centroid (blue). x is the image column and y the height above the substrate, both in px. The axis limits are fixed for the whole video, so the plots can be played as a sequence. Plotting takes about 80 ms per frame.
 
 On synthetic drops (anti-aliased, blurred, noisy), height, width and centroid errors are about 0.1 px.
 
 ## Input / output
 
 - **Input:** `<view>/frames_rotated/frame_*.png` (BaseLine output).
-- **Output:** `<view>/result.csv` with one row per frame. `file number` matches `side/result.csv`. The other columns are `threshold`, `baseline_y`, `height`, `width`, `base_width`, `centroid_x`, `centroid_y`, `centroid_height` and `area` in px, plus cm columns and `touches_border`.
+- **Output:** `<view>/result.csv` with one row per frame. `file number` matches `side/result.csv`. The other columns are `threshold`, `baseline_y`, `height`, `width`, `base_width`, `centroid_x`, `centroid_y`, `centroid_height` and `area` in px, plus cm columns and `touches_border`. One plot per frame is written to `<view>/SR_edge/frame_*.png`.
 
 ## Scale
 
