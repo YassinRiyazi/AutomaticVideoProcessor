@@ -10,7 +10,7 @@ Type=simple
 User=roboprocessing
 Group=roboprocessing
 WorkingDirectory=/home/roboprocessing/Desktop/AutomaticVideoProcessor
-ExecStart=/bin/bash -lc 'source /home/roboprocessing/miniforge3/etc/profile.d/conda.sh && conda activate torch3.13 && exec python AVP.py --daemon --poll-interval 60 --stability-seconds 60'
+ExecStart=/bin/bash -lc 'source /home/roboprocessing/miniforge3/etc/profile.d/conda.sh && conda activate torch3.13 && exec python main.py --daemon --poll-interval 60 --stability-seconds 60'
 Restart=on-failure
 RestartSec=10
 # Give an in-flight folder time to finish before SIGKILL on stop/restart.

@@ -6,7 +6,7 @@ Runs AVP as a systemd service that keeps watching for new experiment folders.
 
 ```bash
 conda activate torch3.13
-python AVP.py --daemon --poll-interval 60 --stability-seconds 60
+python main.py --daemon --poll-interval 60 --stability-seconds 60
 ```
 
 in `/home/roboprocessing/Desktop/AutomaticVideoProcessor`, after `/media/roboprocessing/Data` is mounted. It restarts on failure after 10 s.
@@ -28,6 +28,6 @@ sudo systemctl restart avp.service    # After code or config changes
 sudo systemctl stop avp.service
 ```
 
-On stop, AVP finishes the current folder before exiting (`SIGTERM`). systemd kills it after `TimeoutStopSec=30`, so a long folder can be interrupted; it is reprocessed on the next start because `.done` is missing.
+On stop, AVP finishes the current folder before exiting (`SIGTERM`). systemd kills it after `TimeoutStopSec=30`, so a long folder can be interrupted. The interrupted view has no `.done`, so on the next start its partial outputs are deleted and it is processed again.
 
 Edit the user, paths or conda environment in `avp.service` for another machine, then copy it again and run `daemon-reload`.

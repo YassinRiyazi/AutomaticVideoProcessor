@@ -107,6 +107,8 @@ def process_folder(_folder: str|os.PathLike[str], fe, bld, YOLO, S4) -> None:
             with open(os.path.join(address, '.done'), 'w') as f:
                 f.write('Processing completed successfully.\n')
 
+        os.rmdir(os.path.join(address, 'frames'))
+
     except Exception as e:
         import BaseUtils.logException as logException
 

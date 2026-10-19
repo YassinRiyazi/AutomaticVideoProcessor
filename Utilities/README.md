@@ -14,7 +14,7 @@ Removes frames where the drop is missing or not fully in view, crops the drop, a
 | `create_video_from_images(image_folder, output_video_path, extension="jpg", fps=30)` | Builds an MP4 with ffmpeg |
 | `main(image_folder)` | Older all-in-one filter + crop |
 
-## Typical use (as in `AVP.py`)
+## Typical use (as in `main.py`)
 
 ```python
 import Utilities
