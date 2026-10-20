@@ -1,6 +1,7 @@
 sudo cp deploy/avp.service /etc/systemd/system/avp.service
 sudo systemctl daemon-reload && sudo systemctl enable --now avp.service
-
+sudo systemctl restart avp.service
+journalctl -u avp.service -f
 
 
 

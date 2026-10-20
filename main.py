@@ -7,6 +7,7 @@
         Unified pipeline. For every video folder it processes the side view first (contact angles, CaMeasurer) and
         then the front view (drop geometry, DropGeometry). The front view keeps only the frames the side view kept.
         The video stays in the folder; all outputs go to `<folder>/side` and `<folder>/front`.
+        Once both views finish, `post_run` checks that their frames match and merges both CSVs into `<folder>/result.csv`.
 
     Usage:
         python main.py                                  # one pass over all folders with a pending view
@@ -27,6 +28,8 @@ import  traceback
 from    typing  import  Callable
 
 import  tqdm
+import  numpy   as  np
+import  pandas  as  pd
 import  BaseLine
 import  BaseUtils
 import  BaseUtils.logException  as  logException
@@ -43,6 +46,11 @@ VIDEO_SOURCE_GLOB: str = os.path.join(str(BaseUtils.config['Root_Address']), "*"
 FRAMES_FOLDER: str = str(BaseUtils.config["frame_folder"])
 ROTATED_FRAMES_FOLDER: str = str(BaseUtils.config["rotated_frames_folder"])
 DATABASES_FOLDER: str = str(BaseUtils.config["databases_folder"])
+FPS_EXPERIMENT: float = float(BaseUtils.config["Experiment_Parameters"]["fps_experiment"])  # type: ignore
+
+MERGED_CSV: str = "result.csv"                   # `<folder>/result.csv`, written by post_run
+POST_RUN_ERROR: str = "post_run_error.txt"       # `<folder>/post_run_error.txt`, problems found by post_run
+FRAME_COLUMN: str = "file number"
 
 DAEMON_CONFIG: dict = BaseUtils.config.get("Daemon") or {}  # type: ignore
 STABILITY_SECONDS: float = float(DAEMON_CONFIG.get("stability_seconds", 60))
@@ -65,7 +73,12 @@ def delete_empty_folders(path: str) -> None:
 
 
 def cleanUP(_folder: str, view: str) -> None:
-    """Deletes every output of one view (`<folder>/<view>`), including its `.done` marker and logs."""
+    """Deletes every output of one view (`<folder>/<view>`), including its `.done` marker and logs, and the merged result built from it."""
+    for name in (MERGED_CSV, POST_RUN_ERROR):
+        path = os.path.join(_folder, name)
+        if os.path.isfile(path):
+            os.remove(path)
+
     address = os.path.join(_folder, view)
     for name in (FRAMES_FOLDER, ROTATED_FRAMES_FOLDER, DATABASES_FOLDER, "SR_edge"):
         shutil.rmtree(os.path.join(address, name), ignore_errors=True)
@@ -116,6 +129,19 @@ def pending_views(_folder: str) -> list[str]:
     if is_pending(_folder, FRONT) and (views or side_has_results(_folder)):
         views.append(FRONT)
     return views
+
+
+def needs_post_run(_folder: str) -> bool:
+    """True if both views are finished with results but `post_run` has not merged them yet."""
+    if pending_views(_folder):
+        return False
+    if not all(os.path.isfile(os.path.join(_folder, view, 'result.csv')) for view in VIEWS):
+        return False
+    return not any(os.path.isfile(os.path.join(_folder, name)) for name in (MERGED_CSV, POST_RUN_ERROR))
+
+
+def needs_processing(_folder: str) -> bool:
+    return bool(pending_views(_folder)) or needs_post_run(_folder)
 
 
 def video_signature(_folder: str) -> VideoSignature | None:
@@ -251,8 +277,102 @@ def run_view(_folder: str, view: str, step: Callable[[str, Pipeline], None], pip
         print(f"Error processing {view} view of {_folder}. Check the log in {address} for details.")
 
 
+def rotated_frame_names(address: str) -> list[str]:
+    """Names of the leveled frames of a view (`<view>/frames_rotated/frame_*`), in frame order."""
+    return sorted((os.path.basename(p) for p in glob.glob(os.path.join(address, ROTATED_FRAMES_FOLDER, "frame_*"))), key=frame_index)
+
+
+def _sample(frames: list[str], limit: int = 5) -> str:
+    return ", ".join(frames[:limit]) + (f", ... ({len(frames)} in total)" if len(frames) > limit else "")
+
+
+def post_run(_folder: str) -> pd.DataFrame:
+    """
+    Merges `side/result.csv` and `front/result.csv` into `<folder>/result.csv`, one row per frame (matched on 'file number').
+    Side columns are prefixed with 'side ', front columns with 'front '.
+
+    Checks that both views finished without errors, that both kept the same frames (`<view>/frames_rotated`), and that
+    every kept frame has exactly one complete row in both CSVs, with the side time matching the frame number.
+    The side view never measures the last frame (its velocity is a forward difference), so that frame is left out.
+    Problems are written to `<folder>/post_run_error.txt`; `result.csv` then holds only the frames both views measured.
+    """
+    for name in (MERGED_CSV, POST_RUN_ERROR):
+        path = os.path.join(_folder, name)
+        if os.path.isfile(path):
+            os.remove(path)
+
+    issues: list[str] = []
+    for view in VIEWS:
+        if not os.path.isfile(os.path.join(_folder, view, '.done')):
+            issues.append(f"The {view} view did not finish successfully (no {view}/.done).")
+    # CaMeasurer logs failed frames next to the cropped images, DropGeometry in the view folder
+    for log in (os.path.join(SIDE, 'error_log.txt'), os.path.join(SIDE, DATABASES_FOLDER, 'error_log.txt'), os.path.join(FRONT, 'error_log.txt')):
+        if os.path.isfile(os.path.join(_folder, log)):
+            issues.append(f"Some frames could not be processed; see {log}.")
+
+    side_frames = rotated_frame_names(os.path.join(_folder, SIDE))
+    front_frames = rotated_frame_names(os.path.join(_folder, FRONT))
+    if not side_frames:
+        issues.append(f"No frames in {SIDE}/{ROTATED_FRAMES_FOLDER}.")
+    if set(side_frames) != set(front_frames):
+        only_side = sorted(set(side_frames) - set(front_frames), key=frame_index)
+        only_front = sorted(set(front_frames) - set(side_frames), key=frame_index)
+        if only_side:
+            issues.append(f"Frames in {SIDE}/{ROTATED_FRAMES_FOLDER} but not in {FRONT}/{ROTATED_FRAMES_FOLDER}: {_sample(only_side)}")
+        if only_front:
+            issues.append(f"Frames in {FRONT}/{ROTATED_FRAMES_FOLDER} but not in {SIDE}/{ROTATED_FRAMES_FOLDER}: {_sample(only_front)}")
+
+    expected = side_frames[:-1]
+    expected_set = set(expected)
+
+    tables: dict[str, pd.DataFrame] = {}
+    for view in VIEWS:
+        df = pd.read_csv(os.path.join(_folder, view, 'result.csv'))
+        names = df[FRAME_COLUMN].astype(str)
+
+        duplicated = sorted(set(names[names.duplicated()]), key=frame_index)
+        if duplicated:
+            issues.append(f"{view}/result.csv has more than one row for: {_sample(duplicated)}")
+        missing = sorted(expected_set - set(names), key=frame_index)
+        if missing:
+            issues.append(f"{view}/result.csv has no row for: {_sample(missing)}")
+        unexpected = sorted(set(names) - set(side_frames), key=frame_index)
+        if unexpected:
+            issues.append(f"{view}/result.csv has rows for frames not in {SIDE}/{ROTATED_FRAMES_FOLDER}: {_sample(unexpected)}")
+        incomplete = sorted(set(names[df.isna().any(axis=1)]), key=frame_index)
+        if incomplete:
+            issues.append(f"{view}/result.csv has empty values for: {_sample(incomplete)}")
+
+        tables[view] = df[names.isin(expected_set)].drop_duplicates(FRAME_COLUMN)
+
+    # The side view numbers time by row, so a skipped frame shifts the time (and velocity) of the frames after it
+    side = tables[SIDE]
+    if side_frames and len(side):
+        frame_time = (side[FRAME_COLUMN].map(frame_index) - frame_index(side_frames[0])) / FPS_EXPERIMENT
+        shifted = side.loc[~np.isclose(side["time (s)"], frame_time, rtol=0, atol=0.1 / FPS_EXPERIMENT), FRAME_COLUMN].tolist()
+        if shifted:
+            issues.append(f"side/result.csv 'time (s)' does not match the frame number (expected (frame - {frame_index(side_frames[0])}) / {FPS_EXPERIMENT:g}) for: {_sample(sorted(shifted, key=frame_index))}")
+
+    merged = pd.merge(
+        side.rename(columns=lambda c: c if c == FRAME_COLUMN else f"{SIDE} {c}"),
+        tables[FRONT].rename(columns=lambda c: c if c == FRAME_COLUMN else f"{FRONT} {c}"),
+        on=FRAME_COLUMN, how="inner", validate="one_to_one",
+    )
+    merged = merged.sort_values(FRAME_COLUMN, key=lambda s: s.map(frame_index)).reset_index(drop=True)
+    merged.to_csv(os.path.join(_folder, MERGED_CSV), index=False)
+
+    if issues:
+        with open(os.path.join(_folder, POST_RUN_ERROR), 'w', encoding='utf-8') as f:
+            f.write(f"{len(merged)} of {len(expected)} frames were merged into {MERGED_CSV}.\n")
+            f.write("\n".join(issues) + "\n")
+        print(f"Merged {len(merged)} of {len(expected)} frames of {_folder} with problems; see {POST_RUN_ERROR}.")
+    else:
+        print(f"Merged {len(merged)} frames of {_folder} into {MERGED_CSV}.")
+    return merged
+
+
 def process_folder(_folder: str, pipeline: Pipeline) -> None:
-    """Runs the side view, then the front view, of one video folder (each only if pending)."""
+    """Runs the side view, then the front view, of one video folder (each only if pending), then merges their results."""
     if is_pending(_folder, SIDE):
         run_view(_folder, SIDE, process_side, pipeline)
 
@@ -261,6 +381,14 @@ def process_folder(_folder: str, pipeline: Pipeline) -> None:
             run_view(_folder, FRONT, process_front, pipeline)
         else:
             print(f"Skipping front view of {_folder}: the side view has no results.")
+
+    if needs_post_run(_folder):
+        try:
+            post_run(_folder)
+        except Exception:
+            with open(os.path.join(_folder, POST_RUN_ERROR), 'a', encoding='utf-8') as f:
+                f.write(traceback.format_exc())
+            print(f"Error merging the results of {_folder}; see {POST_RUN_ERROR}.")
 
 
 class GracefulShutdown:
@@ -305,7 +433,7 @@ class UploadQueue:
             signature = video_signature(_folder)
             if signature is None or signature == attempted:
                 continue
-            if not upload_finished(signature, self.stability_seconds, now) or not pending_views(_folder):
+            if not upload_finished(signature, self.stability_seconds, now) or not needs_processing(_folder):
                 continue
             ready.append((last_write_time(signature), _folder))
 
@@ -355,7 +483,7 @@ def main_loop(pipeline: Pipeline, poll_interval: float = POLL_INTERVAL, stabilit
 
         # The video may have been rewritten while the folder waited in the queue; the watcher re-queues it once quiet.
         signature = video_signature(_folder)
-        if signature is None or not upload_finished(signature, stability_seconds) or not pending_views(_folder):
+        if signature is None or not upload_finished(signature, stability_seconds) or not needs_processing(_folder):
             uploads.release(_folder)
             continue
 
@@ -388,7 +516,7 @@ if __name__ == "__main__":
             main_loop(pipeline, poll_interval=args.poll_interval, stability_seconds=args.stability_seconds)
         else:
             for _folder in discover_folders():
-                if not pending_views(_folder):
+                if not needs_processing(_folder):
                     print(f"Skipping already-processed folder: {_folder}")
                     continue
                 process_folder(_folder, pipeline)

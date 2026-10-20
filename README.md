@@ -18,6 +18,9 @@ flowchart LR
     UT -.->|frame range| TR
     TR --> DG[DropGeometry]
     DG --> R2[front/result.csv]
+    CA -->|side/result.csv| PR[post_run<br/>check + merge]
+    R2 --> PR
+    PR --> R3[result.csv]
 ```
 
 [main.py](main.py) runs the side view and then the front view of each experiment folder (`process_folder`). A view runs only if it is pending, and the front view also waits until the side view has written `side/result.csv`.
@@ -35,6 +38,7 @@ flowchart LR
 | 8 | front | Frame range | — | Deletes front frames outside the first–last frame of `side/frames_rotated/` |
 | 9 | front | Drop geometry | `DropGeometry.process_folder(front)` | `front/result.csv`, `front/SR_edge/frame_*.png` |
 | 10 | both | Marker | — | `<view>/.done` (written if `<view>/error_log.txt` is absent), then the raw `frame_*.png` in `<view>/frames/` are deleted |
+| 11 | both | Merge | `post_run(folder)` | `result.csv` (side and front rows matched on `file number`), `post_run_error.txt` if a check fails |
 
 If any stage raises, the exception is written to `<view>/log_<timestamp>.log` and that view is not retried. Frames that fail inside `CaMeasurer` are logged to `side/databases/error_log.txt`; frames that fail inside `DropGeometry` to `front/error_log.txt`.
 
@@ -45,6 +49,8 @@ Each experiment is a folder that contains **exactly one** video (`.mp4 .mov .avi
 ```
 <experiment>/
 ├── <video>.mp4
+├── result.csv                  # post_run: side/result.csv + front/result.csv, one row per frame
+├── post_run_error.txt          # Only if a post_run check failed
 ├── side/
 │   ├── frames/Rotation.png     # BaseLine diagnostic (raw frames are deleted after success)
 │   ├── frames_rotated/         # BaseLine, then filtered by Utilities
@@ -67,6 +73,14 @@ Each experiment is a folder that contains **exactly one** video (`.mp4 .mov .avi
 ```
 
 `side/result.csv` columns: `file number`, `time (s)`, `x_center (cm)`, `adv (degree)`, `rec (degree)`, `contact_line_length (cm)`, `y_center (cm)`, `middle_angle_degree (degree)`, `velocity (cm/s)`. For `front/result.csv` see [DropGeometry](DropGeometry/README.md); its `file number` matches the side view.
+
+`result.csv` is written by `post_run` after both views finish, whether or not they succeeded, as long as both have a `result.csv`. It has one row per frame, matched on `file number`. Every other column keeps its name with a `side ` or `front ` prefix, for example `side adv (degree)` and `front height (cm)`. It merges the raw `side/result.csv`, not `result_corrected.csv`. `post_run` checks that:
+- both views have `.done` and no per-frame error log (`side/databases/error_log.txt`, `side/error_log.txt`, `front/error_log.txt`);
+- `side/frames_rotated` and `front/frames_rotated` hold the same frames;
+- every kept frame except the last has exactly one row with no empty values in both CSVs, and no CSV has rows for other frames. The side view never measures the last frame because its velocity is a forward difference;
+- `side time (s)` equals `(frame - first frame) / fps_experiment`. CaMeasurer numbers time by row, so a skipped frame shifts the time and velocity of every frame after it.
+
+If a check fails, the problems are written to `post_run_error.txt` and `result.csv` still holds the frames both views measured. A folder whose views are finished but that has neither `result.csv` nor `post_run_error.txt` is merged on the next run or daemon scan. `cleanUP`/`-C` deletes both files together with the view outputs.
 
 ## Installation
 
