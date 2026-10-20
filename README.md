@@ -73,7 +73,7 @@ Each experiment is a folder that contains **exactly one** video (`.mp4 .mov .avi
 Requirements:
 - Linux with an NVIDIA GPU; YOLO inference is hard-coded to `device="cuda"`.
 - `ffmpeg` and `ffprobe` on `PATH`.
-- A conda environment (the service uses `torch3.13` from miniforge3; `torch3.11` is also used).
+- A conda environment (the service uses `torch3.11` from miniforge3).
 
 ```bash
 pip install -r requirements.txt
@@ -86,8 +86,8 @@ python pre_requisites.py   # Checks ffmpeg/ffprobe; rebuilds TensorRT .engine fi
 
 ```bash
 python main.py                    # One pass over all folders with a pending view
-python main.py --daemon           # Keep polling for new folders
-python main.py --daemon --poll-interval 60 --stability-seconds 60
+python main.py --daemon           # Watch Root_Address and process each upload once its video stops being written
+python main.py --daemon --poll-interval 10 --stability-seconds 60
 python main.py -C --video-list /path/a /path/b   # Delete both views of these folders first, then process
 python main.py -C front                          # Recompute the front view of every folder
 ```
@@ -96,11 +96,13 @@ python main.py -C front                          # Recompute the front view of e
 |------|---------|---------|
 | `-C`, `--clean [VIEW ...]` | off | Delete the outputs, `.done` and `*.log` of these views (`side`, `front`; default both), then continue processing |
 | `--video-list` | — | Folders to clean; without it `-C` cleans every folder under `Root_Address` |
-| `--daemon` | off | Poll for new folders instead of a single pass |
-| `--poll-interval` | `60` | Seconds between rescans in daemon mode |
-| `--stability-seconds` | `60` | A folder must be unchanged this long before it is processed (avoids half-copied folders) |
+| `--daemon` | off | Watch `Root_Address` instead of a single pass (see below) |
+| `--poll-interval` | `Daemon.poll_interval` (10) | Seconds between rescans in daemon mode |
+| `--stability-seconds` | `Daemon.stability_seconds` (60) | A video must go unwritten this long before its folder is queued (avoids half-uploaded videos) |
 
 The source folders are `Root_Address/*` from [config.yaml](config.yaml). A view is pending when `<view>/` has no `.done`, no `error_log.txt` and no `*.log`.
+
+In daemon mode a watcher thread rescans `Root_Address/*` for video files uploaded through Samba. A folder with a pending view is queued once all its videos are non-empty and none has been written (mtime and ctime) for `stability_seconds`. A single worker then processes the queue in upload order. Before processing, the worker checks the video again; if it was rewritten, the folder is dropped from the queue and queued again once it stops changing. A processed folder is queued again only if its video changes.
 
 [main_side.py](main_side.py) and [main_front.py](main_front.py) run a single view.
 
@@ -112,7 +114,9 @@ All modules read [config.yaml](config.yaml) through `BaseUtils.config`.
 
 | Key | Value | Used by |
 |-----|-------|---------|
-| `Root_Address` | `/run/media/d25u2/Dont/output/...` | main.py (folders to process) |
+| `Root_Address` | `/run/media/roboprocessing/Data/Samba-Share/RobotScientistClips` | main.py (folders to process; the Samba share) |
+| `Daemon.stability_seconds` | `60` | main.py `--daemon`: seconds a video must go unwritten before its folder is queued |
+| `Daemon.poll_interval` | `10` | main.py `--daemon`: seconds between scans of `Root_Address` |
 | `Video.cropping_properties_side.{X,Y,WIDTH,HEIGHT}` | `750, 0, 1000, 188` | FrameExtractor (side ffmpeg crop); `WIDTH` also by Utilities |
 | `Video.cropping_properties_front.{X,WIDTH}` | `283, 240` | FrameExtractor (front ffmpeg crop; `Y` and `HEIGHT` from the side) |
 | `Video.Original_image.{WIDTH,HEIGHT}` | `2048, 192` | Reference only |

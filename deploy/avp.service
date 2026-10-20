@@ -1,16 +1,18 @@
 [Unit]
 Description=Automatic Video Processor (AVP) daemon
-# /media/roboprocessing/Data is a local disk auto-mounted via /etc/fstab (not network/gvfs),
-# so systemd just needs to wait for local filesystems to be mounted.
+# /run/media/roboprocessing/Data (holds the Samba share Root_Address) is a local disk mounted via /etc/fstab,
+# so systemd just needs to wait for it to be mounted.
 After=local-fs.target
-RequiresMountsFor=/media/roboprocessing/Data
+RequiresMountsFor=/run/media/roboprocessing/Data
 
 [Service]
 Type=simple
 User=roboprocessing
 Group=roboprocessing
 WorkingDirectory=/home/roboprocessing/Desktop/AutomaticVideoProcessor
-ExecStart=/bin/bash -lc 'source /home/roboprocessing/miniforge3/etc/profile.d/conda.sh && conda activate torch3.13 && exec python main.py --daemon --poll-interval 60 --stability-seconds 60'
+# Poll interval and stability time come from the Daemon section of config.yaml
+ExecStart=/bin/bash -lc 'source /home/roboprocessing/miniforge3/etc/profile.d/conda.sh && conda activate torch3.11 && exec python main.py --daemon'
+Environment=PYTHONUNBUFFERED=1
 Restart=on-failure
 RestartSec=10
 # Give an in-flight folder time to finish before SIGKILL on stop/restart.

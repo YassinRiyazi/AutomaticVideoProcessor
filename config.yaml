@@ -1,4 +1,10 @@
-Root_Address: "/run/media/d25u2/Dont/output/2026-10-16_18-12-14-317689"
+Root_Address: "/run/media/roboprocessing/Data/Samba-Share/RobotScientistClips"
+
+# Daemon mode (python main.py --daemon): watches Root_Address for videos uploaded through Samba
+Daemon:
+  stability_seconds : 60  # a video is queued only after it has not been written for this many seconds
+  poll_interval     : 10  # seconds between scans of Root_Address
+
 # First layer processing parameters
 Video: 
   cropping: True # Since we have multi view image we crop 

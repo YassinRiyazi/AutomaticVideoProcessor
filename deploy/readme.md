@@ -1,15 +1,29 @@
+sudo cp deploy/avp.service /etc/systemd/system/avp.service
+sudo systemctl daemon-reload && sudo systemctl enable --now avp.service
+
+
+
+
+
+
+
+
+
+
+
+
 # deploy
 
-Runs AVP as a systemd service that keeps watching for new experiment folders.
+Runs AVP as a systemd service that watches `Root_Address` (the Samba share) for uploaded videos. A folder is queued once its video has not been written for `Daemon.stability_seconds` (config.yaml, default 60 s); queued folders are processed one at a time, oldest upload first. `Root_Address` is rescanned every `Daemon.poll_interval` seconds.
 
 [avp.service](avp.service) starts, as user `roboprocessing`:
 
 ```bash
-conda activate torch3.13
-python main.py --daemon --poll-interval 60 --stability-seconds 60
+conda activate torch3.11
+python main.py --daemon
 ```
 
-in `/home/roboprocessing/Desktop/AutomaticVideoProcessor`, after `/media/roboprocessing/Data` is mounted. It restarts on failure after 10 s.
+in `/home/roboprocessing/Desktop/AutomaticVideoProcessor`, after `/run/media/roboprocessing/Data` is mounted. It restarts on failure after 10 s.
 
 ## Install
 

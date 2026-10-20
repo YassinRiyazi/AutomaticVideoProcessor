@@ -10,16 +10,20 @@
 
     Usage:
         python main.py                                  # one pass over all folders with a pending view
-        python main.py --daemon                         # keep polling for new folders
+        python main.py --daemon                         # watch Root_Address; queue each folder once its video
+                                                        # has not been written for Daemon.stability_seconds
         python main.py -C                               # delete all side and front outputs first, then process
         python main.py -C front --video-list /path/a    # redo only the front view of these folders
 """
 import  os
 import  glob
 import  time
+import  queue
 import  shutil
 import  signal
 import  argparse
+import  threading
+import  traceback
 from    typing  import  Callable
 
 import  tqdm
@@ -39,6 +43,13 @@ VIDEO_SOURCE_GLOB: str = os.path.join(str(BaseUtils.config['Root_Address']), "*"
 FRAMES_FOLDER: str = str(BaseUtils.config["frame_folder"])
 ROTATED_FRAMES_FOLDER: str = str(BaseUtils.config["rotated_frames_folder"])
 DATABASES_FOLDER: str = str(BaseUtils.config["databases_folder"])
+
+DAEMON_CONFIG: dict = BaseUtils.config.get("Daemon") or {}  # type: ignore
+STABILITY_SECONDS: float = float(DAEMON_CONFIG.get("stability_seconds", 60))
+POLL_INTERVAL: float = float(DAEMON_CONFIG.get("poll_interval", 10))
+
+# (name, size, mtime_ns, ctime_ns) of every video file in a folder
+VideoSignature = tuple[tuple[str, int, int, int], ...]
 
 
 # deleting empty folders and subfolders recursively
@@ -107,16 +118,34 @@ def pending_views(_folder: str) -> list[str]:
     return views
 
 
-def get_max_mtime(_folder: str) -> float:
-    """Most recent modification time of the folder itself or any file under it (recursive)."""
-    latest = os.path.getmtime(_folder)
-    for root, _dirs, files in os.walk(_folder):
-        for name in files:
-            try:
-                latest = max(latest, os.path.getmtime(os.path.join(root, name)))
-            except OSError:
-                continue
-    return latest
+def video_signature(_folder: str) -> VideoSignature | None:
+    """Size and timestamps of the video files directly inside a folder, or None if it has none (yet)."""
+    signature: list[tuple[str, int, int, int]] = []
+    try:
+        with os.scandir(_folder) as entries:
+            for entry in entries:
+                # Hidden files are temporary upload files (e.g. rsync's `.name.mp4.XXXXXX`)
+                if entry.name.startswith('.') or not entry.name.lower().endswith(FrameExtractor.VIDEO_EXTENSIONS):
+                    continue
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                st = entry.stat(follow_symlinks=False)
+                signature.append((entry.name, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
+    except OSError:
+        return None
+    return tuple(sorted(signature)) or None
+
+
+def last_write_time(signature: VideoSignature) -> float:
+    """Latest write to any of the videos. ctime is included because Samba clients can backdate mtime, but not ctime."""
+    return max(max(mtime_ns, ctime_ns) for _name, _size, mtime_ns, ctime_ns in signature) / 1e9
+
+
+def upload_finished(signature: VideoSignature, stability_seconds: float, now: float | None = None) -> bool:
+    """True once every video is non-empty and none has been written for `stability_seconds`."""
+    if any(size == 0 for _name, size, _mtime_ns, _ctime_ns in signature):
+        return False
+    return (time.time() if now is None else now) - last_write_time(signature) >= stability_seconds
 
 
 def frame_index(path: str) -> int:
@@ -136,7 +165,7 @@ class Pipeline:
     def __init__(self) -> None:
         self.extractors = {view: FrameExtractor.FrameExtractor(SECONDARY_ADDRESS=view) for view in VIEWS}
         self.levelers   = {view: BaseLine.BaseLine(SECONDARY_ADDRESS=view) for view in VIEWS}
-        self.yolo       = Utilities.YoloWalker(num_workers=5)
+        self.yolo       = Utilities.YoloWalker(num_workers=10)
         self.s4         = CaMeasurer.processes_mp_shared(num_workers=8)
 
     def close(self) -> None:
@@ -238,57 +267,116 @@ class GracefulShutdown:
     """Tracks a shutdown request from SIGTERM/SIGINT, checked between folders (not mid-processing)."""
 
     def __init__(self) -> None:
-        self.requested = False
+        self.event = threading.Event()
         signal.signal(signal.SIGTERM, self._handle)
         signal.signal(signal.SIGINT, self._handle)
 
+    @property
+    def requested(self) -> bool:
+        return self.event.is_set()
+
     def _handle(self, signum, frame) -> None:
-        print(f"Received signal {signum}, will stop after the current folder finishes.")
-        self.requested = True
+        print(f"Received signal {signum}, will stop after the current folder finishes.", flush=True)
+        self.event.set()
 
 
-def main_loop(pipeline: Pipeline, poll_interval: float = 60.0, stability_seconds: float = 60.0) -> None:
-    """Continuously scan for new folders and process each once its contents stop changing."""
+class UploadQueue:
+    """
+    FIFO of folders whose videos finished uploading. `scan()` (run by a watcher thread) queues each pending folder
+    once its videos are quiet, oldest upload first; a folder is never queued twice, and is not retried after being
+    processed unless its videos change.
+    """
+
+    def __init__(self, stability_seconds: float) -> None:
+        self.stability_seconds = stability_seconds
+        self._queue: "queue.Queue[str]" = queue.Queue()
+        self._lock = threading.Lock()
+        self._queued: set[str] = set()
+        self._attempted: dict[str, VideoSignature] = {}
+
+    def scan(self) -> None:
+        now = time.time()
+        ready: list[tuple[float, str]] = []
+        for _folder in discover_folders():
+            with self._lock:
+                if _folder in self._queued:
+                    continue
+                attempted = self._attempted.get(_folder)
+            signature = video_signature(_folder)
+            if signature is None or signature == attempted:
+                continue
+            if not upload_finished(signature, self.stability_seconds, now) or not pending_views(_folder):
+                continue
+            ready.append((last_write_time(signature), _folder))
+
+        for _uploaded, _folder in sorted(ready):
+            with self._lock:
+                self._queued.add(_folder)
+            self._queue.put(_folder)
+            print(f"Queued ({self._queue.qsize()} waiting): {_folder}", flush=True)
+
+    def get(self, timeout: float) -> str:
+        return self._queue.get(timeout=timeout)
+
+    def qsize(self) -> int:
+        return self._queue.qsize()
+
+    def release(self, _folder: str, attempted: VideoSignature | None = None) -> None:
+        """Called once a dequeued folder is handled; `attempted` stops it from being queued again for the same videos."""
+        with self._lock:
+            self._queued.discard(_folder)
+            if attempted is not None:
+                self._attempted[_folder] = attempted
+
+
+def watch_uploads(uploads: UploadQueue, stop: threading.Event, poll_interval: float) -> None:
+    """Watcher thread: rescans Root_Address every `poll_interval` seconds until `stop` is set."""
+    while not stop.is_set():
+        try:
+            uploads.scan()
+        except Exception:
+            print(f"Error while scanning {VIDEO_SOURCE_GLOB}:\n{traceback.format_exc()}", flush=True)
+        stop.wait(poll_interval)
+
+
+def main_loop(pipeline: Pipeline, poll_interval: float = POLL_INTERVAL, stability_seconds: float = STABILITY_SECONDS) -> None:
+    """Continuously watch Root_Address and process, in upload order, every folder whose videos finished uploading."""
     shutdown = GracefulShutdown()
-    # folder -> (last_seen_max_mtime, first_seen_stable_timestamp)
-    stability_tracker: dict[str, tuple[float, float]] = {}
+    uploads = UploadQueue(stability_seconds)
+    watcher = threading.Thread(target=watch_uploads, args=(uploads, shutdown.event, poll_interval), name="upload-watcher", daemon=True)
+    watcher.start()
+    print(f"Watching {VIDEO_SOURCE_GLOB} (stability: {stability_seconds:g} s, poll interval: {poll_interval:g} s)", flush=True)
 
     while not shutdown.requested:
-        for _folder in discover_folders():
-            if shutdown.requested:
-                break
+        try:
+            _folder = uploads.get(timeout=1.0)
+        except queue.Empty:
+            continue
 
-            if not pending_views(_folder):
-                stability_tracker.pop(_folder, None)
-                continue
+        # The video may have been rewritten while the folder waited in the queue; the watcher re-queues it once quiet.
+        signature = video_signature(_folder)
+        if signature is None or not upload_finished(signature, stability_seconds) or not pending_views(_folder):
+            uploads.release(_folder)
+            continue
 
-            now = time.time()
-            current_mtime = get_max_mtime(_folder)
-            last_mtime, first_stable_seen = stability_tracker.get(_folder, (None, None))
-
-            if last_mtime != current_mtime:
-                stability_tracker[_folder] = (current_mtime, now)
-                continue
-
-            if now - first_stable_seen < stability_seconds:
-                continue
-
+        try:
+            print(f"Processing ({uploads.qsize()} waiting): {_folder}", flush=True)
             process_folder(_folder, pipeline)
-            stability_tracker.pop(_folder, None)
+        except Exception:
+            print(f"Unexpected error processing {_folder}:\n{traceback.format_exc()}", flush=True)
+        finally:
+            uploads.release(_folder, attempted=signature)
 
-        for _ in range(int(poll_interval)):
-            if shutdown.requested:
-                break
-            time.sleep(1)
+    watcher.join(timeout=5.0)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Automatic Video Processor (AVP): side view, then front view, of every video folder")
     parser.add_argument("-C", "--clean", nargs="*", choices=VIEWS, metavar="VIEW", help="Delete the outputs of these views (default: side and front) before processing, so they are recomputed")
     parser.add_argument("--video-list", nargs="*", help="Folders to clean with -C (default: every folder under Root_Address)")
-    parser.add_argument("--daemon", action="store_true", help="Run continuously, polling for newly added folders instead of doing a single pass")
-    parser.add_argument("--poll-interval", type=float, default=60.0, help="Seconds between folder rescans in --daemon mode (default: 60)")
-    parser.add_argument("--stability-seconds", type=float, default=60.0, help="Seconds a folder must be unchanged before it's processed, to avoid mid-copy folders (default: 60)")
+    parser.add_argument("--daemon", action="store_true", help="Run continuously: watch Root_Address and process each folder, in upload order, once its video stops being written")
+    parser.add_argument("--poll-interval", type=float, default=POLL_INTERVAL, help=f"Seconds between scans of Root_Address in --daemon mode (default: Daemon.poll_interval in config.yaml = {POLL_INTERVAL:g})")
+    parser.add_argument("--stability-seconds", type=float, default=STABILITY_SECONDS, help=f"Seconds a video must go unwritten before its folder is queued (default: Daemon.stability_seconds in config.yaml = {STABILITY_SECONDS:g})")
     args = parser.parse_args()
 
     if args.clean is not None:
