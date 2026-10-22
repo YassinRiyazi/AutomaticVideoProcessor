@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+__PLOTLY__
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --ink:#1d2433; --muted:#6b7385; --line:#e3e6ec; --accent:#2E6FBA; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font-family:Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  header { padding:28px 40px 8px; }
+  h1 { margin:0 0 4px; font-size:26px; font-weight:650; letter-spacing:-.01em; }
+  .sub { color:var(--muted); font-size:14px; }
+  main { padding:12px 40px 40px; display:grid; gap:22px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
+          box-shadow:0 1px 2px rgba(16,24,40,.04); padding:18px 22px 10px; }
+  .card h2 { margin:0 0 2px; font-size:17px; font-weight:620; }
+  .card p.hint { margin:0 0 12px; color:var(--muted); font-size:13px; }
+  .controls { display:flex; flex-wrap:wrap; gap:14px 22px; align-items:flex-end; margin-bottom:6px; }
+  .controls label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted);
+                    font-weight:550; text-transform:uppercase; letter-spacing:.04em; }
+  select, input[type=range] { font:inherit; font-size:14px; color:var(--ink); }
+  select { padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; min-width:150px; }
+  .check { flex-direction:row !important; align-items:center; gap:6px !important; text-transform:none !important;
+           font-size:14px !important; color:var(--ink) !important; letter-spacing:0 !important; }
+  .val { color:var(--ink); font-weight:600; }
+  .row2 { display:grid; grid-template-columns: 3fr 2fr; gap:28px; margin-top:8px; }
+  @media (max-width: 1200px) { .row2 { grid-template-columns: 1fr; } }
+  .win { display:flex; align-items:center; gap:6px; color:var(--ink); }
+  .win input { width:76px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; font:inherit; font-size:14px; }
+  .subhead { font-size:14px; font-weight:600; margin:6px 0 0 4px; }
+  .subhead span { color:var(--muted); font-weight:400; }
+  .note { color:#8a5a00 !important; }
+  .err { color:#b42318 !important; font-weight:600; }
+  .hint:empty { display:none; }
+  .win button { font:inherit; font-size:12px; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:#f7f8fa; cursor:pointer; }
+  .win button:hover { background:#eef1f6; }
+  .win input.bad { border-color:#b42318; background:#fff5f4; }
+  table { border-collapse:collapse; width:100%; font-size:13.5px; font-variant-numeric:tabular-nums; margin-top:12px; }
+  th { text-align:left; font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:600;
+       border-bottom:1px solid var(--line); padding:6px 8px; }
+  td { padding:7px 8px; border-bottom:1px solid #f0f2f5; }
+  td.num, th.num { text-align:right; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; vertical-align:-1px; }
+  .quality { margin-top:12px; padding:10px 14px; background:#fffaeb; border:1px solid #fde7b0; border-radius:10px; font-size:13px; color:#7a4d00; }
+  .quality:empty { display:none; }
+  .quality ul { margin:4px 0 0 18px; padding:0; }
+  footer { color:var(--muted); font-size:12px; padding:0 40px 30px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>__TITLE__</h1>
+  <div class="sub" id="subtitle"></div>
+</header>
+<main>
+  <section class="card">
+    <h2>Time series by tilt angle and repetition</h2>
+    <p class="hint">Hover a curve to highlight that run. Click a legend entry to hide/show it, double-click to isolate it. Drag to zoom, double-click the plot to reset.</p>
+    <div class="controls">
+      <label>Quantity <select id="ySel"></select></label>
+      <label>X axis <select id="xSel"></select></label>
+      <label>Panels <select id="facetSel">
+        <option value="tilt">One panel per tilt · colour = repetition</option>
+        <option value="rep">One panel per repetition · colour = tilt</option>
+      </select></label>
+      <label>Smoothing <span><input id="smooth" type="range" min="1" max="41" step="2" value="1"> <span class="val" id="smoothVal"></span></span></label>
+      <label>Focus <select id="focusSel"></select></label>
+      <label class="check"><input type="checkbox" id="rawChk"> show raw underneath</label>
+      <label class="check"><input type="checkbox" id="sharedChk" checked> shared y axis</label>
+      <label class="check" title="Scale the y axis to the 0.5–99.5th percentile so that isolated spikes do not flatten every other curve"><input type="checkbox" id="robustChk" checked> robust y range (0.5–99.5 %)</label>
+    </div>
+    <div id="tsPlot"></div>
+  </section>
+
+  <section class="card">
+    <h2>Degradation across repetitions</h2>
+    <p class="hint">One value per run: a summary statistic of the selected quantity, computed on the <b>unsmoothed</b> data inside a common
+      analysis window, so that every run is compared over the same stretch of time or of surface. Frames are weighted by the distance
+      (or time) they cover, so slow parts of a run are not over-counted. Regions outside the window are greyed out in the time-series plot.</p>
+    <div class="controls">
+      <label>Statistic <select id="statSel">
+        <option value="mean">Mean</option><option value="median">Median</option>
+        <option value="max">Maximum</option><option value="min">Minimum</option>
+        <option value="std">Standard deviation</option>
+        <option value="first">Initial (first 10 % of window)</option><option value="last">Final (last 10 % of window)</option>
+      </select></label>
+      <label>Scale <select id="normSel">
+        <option value="abs">Absolute value</option>
+        <option value="delta">Change vs. earliest recorded repetition</option>
+        <option value="pct">% change vs. earliest recorded repetition</option>
+      </select></label>
+      <label>Window on <select id="winAxis"></select></label>
+      <label>Analysis window <span class="win"><input type="number" id="w0"> – <input type="number" id="w1"> <span id="winUnit"></span>
+        <button id="winReset" type="button" title="Reset to the range covered by every included run">full</button></span></label>
+      <label class="check"><input type="checkbox" id="sdChk"> within-run spread (±1 SD)</label>
+      <label class="check"><input type="checkbox" id="flagChk"> include flagged runs</label>
+      <label class="check" title="Scale the trend plot and heatmap to the bulk of the values; outliers (beyond 5 IQR) are marked ▲/▼ at the edge"><input type="checkbox" id="clipChk" checked> clip outliers</label>
+    </div>
+    <p class="hint err" id="winErr"></p>
+    <p class="hint note" id="baselineNote"></p>
+    <div class="subhead">Trend per tilt angle <span>· dashed = least-squares fit over repetitions</span></div>
+    <div id="degPlot"></div>
+    <div class="row2">
+      <div>
+        <div class="subhead">Tilt × repetition overview <span>· empty = not recorded, ⚠ = flagged run</span></div>
+        <div id="heatPlot"></div>
+      </div>
+      <div>
+        <div class="subhead">Trend statistics</div>
+        <table id="trendTable"></table>
+        <p class="hint" style="margin-top:10px">Slope ± standard error from an ordinary least-squares fit of the per-run value against repetition number
+          (only with ≥ 4 runs). “Rel.” = slope relative to the fitted value at the first repetition.</p>
+      </div>
+    </div>
+    <div class="quality" id="quality"></div>
+  </section>
+</main>
+<footer id="footer"></footer>
+
+<script id="payload" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById('payload').textContent);
+const $ = id => document.getElementById(id);
+const FONT = {family:'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', size:13, color:'#1d2433'};
+const GRID = '#eceef2';
+const CONFIG = {responsive:true, displaylogo:false,
+                toImageButtonOptions:{format:'png', scale:2, filename:'droplet_results'}};
+
+const col = k => D.columns[k];
+const axisTitle = k => col(k).unit ? `${col(k).label} (${col(k).unit})` : col(k).label;
+const fmtTilt = t => `${+t}°`;
+
+// ---------- controls ----------
+function fillSelect(sel, keys) {
+  let group = null, og = null;
+  keys.forEach(k => {
+    if (col(k).group !== group) { group = col(k).group; og = document.createElement('optgroup'); og.label = group; sel.appendChild(og); }
+    const o = document.createElement('option'); o.value = k; o.textContent = axisTitle(k); og.appendChild(o);
+  });
+}
+fillSelect($('ySel'), D.yOrder);
+D.xOptions.forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = axisTitle(k); $('xSel').appendChild(o); });
+
+// ---------- maths ----------
+function smooth(a, w) {
+  if (w <= 1) return a;
+  const h = (w - 1) / 2, out = new Array(a.length);
+  for (let i = 0; i < a.length; i++) {
+    let s = 0, n = 0;
+    for (let j = Math.max(0, i - h); j <= Math.min(a.length - 1, i + h); j++) if (a[j] !== null) { s += a[j]; n++; }
+    out[i] = n ? s / n : null;
+  }
+  return out;
+}
+const mean = v => v.reduce((s, x) => s + x, 0) / v.length;
+const finite = a => a.filter(v => v !== null && Number.isFinite(v));
+function linfit(xs, ys) {
+  const n = xs.length, mx = mean(xs), my = mean(ys);
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+  const slope = sxy / sxx, icpt = my - slope * mx;
+  const ssr = xs.reduce((s, x, i) => s + (ys[i] - icpt - slope * x) ** 2, 0);
+  return {slope, icpt, n, se: n > 2 ? Math.sqrt(ssr / (n - 2) / sxx) : NaN, r2: syy > 0 ? 1 - ssr / syy : NaN};
+}
+const fmtNum = v => { if (!Number.isFinite(v)) return '–'; const a = Math.abs(v);
+  return a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : a === 0 ? '0' : v.toPrecision(2); };
+
+// ---------- run selection & analysis window ----------
+const included = run => !run.flag || $('flagChk').checked;
+const winAxis = () => $('winAxis').value;
+const WIN_STEP = {time_ms: 0.25};
+function commonRange(axis) {
+  const runs = D.runs.filter(included);
+  const lo = Math.max(...runs.map(r => Math.min(...finite(r.data[axis]))));
+  const hi = Math.min(...runs.map(r => Math.max(...finite(r.data[axis]))));
+  return {lo, hi};
+}
+function resetWindow() {
+  const {lo, hi} = commonRange(winAxis()), step = WIN_STEP[winAxis()] || 0.01;
+  const dec = (String(step).split('.')[1] || '').length;
+  $('w0').step = $('w1').step = step;
+  $('w0').value = (Math.ceil(lo / step) * step).toFixed(dec);
+  $('w1').value = (Math.floor(hi / step) * step).toFixed(dec);
+  $('winUnit').textContent = col(winAxis()).unit;
+}
+function windowState() {
+  const {lo, hi} = commonRange(winAxis()), w0 = parseFloat($('w0').value), w1 = parseFloat($('w1').value), eps = 1e-9;
+  const ok = Number.isFinite(w0) && Number.isFinite(w1) && w0 < w1 && w0 >= lo - eps && w1 <= hi + eps;
+  $('w0').classList.toggle('bad', !ok); $('w1').classList.toggle('bad', !ok);
+  $('winErr').textContent = ok ? '' : `Invalid analysis window: it must start before it ends and lie within ${fmtNum(lo)}–${fmtNum(hi)} ${col(winAxis()).unit}, ` +
+    'the range covered by every included run. Summaries are not updated until this is fixed (or press “full”).';
+  return {ok, w0, w1, lo, hi};
+}
+function windowValues(run, y, w0, w1) {
+  const t = run.data[winAxis()], a = run.data[y] || [], out = [];
+  for (let i = 0; i < a.length; i++) if (a[i] !== null && t[i] !== null && t[i] >= w0 && t[i] <= w1) out.push([t[i], a[i]]);
+  return out;
+}
+// Each frame is weighted by the stretch of the window axis it represents (midpoint rule), so that slow and fast
+// parts of a run count in proportion to the surface (or time) they cover rather than to their number of frames.
+function weighted(tv, w0, w1) {
+  const p = [...tv].sort((a, b) => a[0] - b[0]), n = p.length;
+  const edges = p.map((q, i) => i ? (p[i - 1][0] + q[0]) / 2 : w0).concat([w1]);
+  let w = p.map((_, i) => Math.max(0, edges[i + 1] - edges[i]));
+  if (!(w.reduce((a, b) => a + b, 0) > 0)) w = w.map(() => 1);
+  return p.map((q, i) => ({x: q[0], v: q[1], w: w[i]}));
+}
+const wmean = P => P.reduce((s, q) => s + q.w * q.v, 0) / P.reduce((s, q) => s + q.w, 0);
+function wmedian(P) {
+  const q = [...P].sort((a, b) => a.v - b.v), half = q.reduce((s, e) => s + e.w, 0) / 2;
+  let c = 0; for (const e of q) { c += e.w; if (c >= half) return e.v; } return q.at(-1).v;
+}
+function stat(run, y, kind, W) {
+  const tv = windowValues(run, y, W.w0, W.w1), edge = 0.1 * (W.w1 - W.w0);
+  if (!tv.length) return {v: null, n: 0};
+  const P = weighted(tv, W.w0, W.w1);
+  let r;
+  switch (kind) {
+    case 'mean': r = wmean(P); break;
+    case 'median': r = wmedian(P); break;
+    case 'max': r = Math.max(...P.map(q => q.v)); break;
+    case 'min': r = Math.min(...P.map(q => q.v)); break;
+    case 'std': { const m = wmean(P); r = Math.sqrt(wmean(P.map(q => ({w: q.w, v: (q.v - m) ** 2})))); break; }
+    case 'first': { const E = P.filter(q => q.x <= W.w0 + edge); r = E.length ? wmean(E) : null; break; }
+    case 'last': { const E = P.filter(q => q.x >= W.w1 - edge); r = E.length ? wmean(E) : null; break; }
+  }
+  return {v: Number.isFinite(r) ? r : null, n: P.length};
+}
+// Robust display range (Tukey fences, k = 5 IQR): values outside are drawn at the edge instead of squashing the rest.
+function fences(vals) {
+  const v = vals.filter(Number.isFinite).sort((a, b) => a - b);
+  if (v.length < 8) return null;
+  const q = p => v[Math.round(p * (v.length - 1))], q1 = q(0.25), q3 = q(0.75), iqr = q3 - q1;
+  if (!(iqr > 0)) return null;
+  const inl = v.filter(x => x >= q1 - 5 * iqr && x <= q3 + 5 * iqr);
+  if (inl.length === v.length) return null;
+  const lo = inl[0], hi = inl.at(-1), pad = 0.08 * (hi - lo || 1);
+  return {lo, hi, range: [lo - pad, hi + pad]};
+}
+
+// ---------- plot 1: time series ----------
+const GRIDS = {1:1, 2:2, 3:3, 4:2, 5:3, 6:3, 7:4, 8:4, 9:3, 10:5, 11:4, 12:4};
+function gridShape(n) { const cols = GRIDS[n] || 5; return {cols, rows: Math.ceil(n / cols)}; }
+const tiltColor = t => D.tiltColors[String(+t)];
+const smoothLabel = w => w > 1 ? `${w} pts ≈ ${(w * D.dtMs).toFixed(2)} ms` : 'off';
+let focus = null;
+
+function fillFocus() {
+  const facet = $('facetSel').value, colorBy = facet === 'tilt' ? 'rep' : 'tilt', sel = $('focusSel'), prev = sel.value;
+  const vals = [...new Set(D.runs.map(r => r[colorBy]))].sort((a, b) => a - b);
+  sel.innerHTML = '<option value="">All runs</option>' + vals.map(v =>
+    `<option value="${v}">${colorBy === 'rep' ? 'Repetition ' + v : 'Tilt ' + fmtTilt(v)}</option>`).join('');
+  sel.value = vals.map(String).includes(prev) ? prev : '';
+}
+
+function drawTimeSeries() {
+  const y = $('ySel').value, x = $('xSel').value, facet = $('facetSel').value;
+  const w = +$('smooth').value, raw = $('rawChk').checked, shared = $('sharedChk').checked;
+  const colorBy = facet === 'tilt' ? 'rep' : 'tilt';
+  const facets = [...new Set(D.runs.map(r => r[facet]))].sort((a, b) => a - b);
+  const {cols, rows} = gridShape(facets.length);
+  const gx = 0.045, gy = rows > 2 ? 0.10 : 0.12, panelH = rows > 2 ? 250 : 300, cw = 1 / cols;
+  const layout = {font:FONT, paper_bgcolor:'#fff', plot_bgcolor:'#fff', height: 90 + rows * panelH,
+                  margin:{l:85, r:20, t:30, b:70}, hovermode:'closest', annotations:[], shapes:[],
+                  legend:{title:{text: colorBy === 'rep' ? '<b>Repetition</b>' : '<b>Tilt</b>'}, tracegroupgap:2},
+                  hoverlabel:{font:{family:FONT.family, size:12}}};
+  const W = windowState(), xs = D.runs.flatMap(r => finite(r.data[x]));
+  const xmin = Math.min(...xs), xmax = Math.max(...xs);
+  const traces = [], seen = new Set(), robust = $('robustChk').checked;
+  const yRange = vals => {
+    const v = finite(vals).sort((a, b) => a - b);
+    if (!robust || v.length < 20) return undefined;
+    const q = p => v[Math.min(v.length - 1, Math.max(0, Math.round(p * (v.length - 1))))];
+    const lo = q(0.005), hi = q(0.995), pad = 0.08 * (hi - lo || 1);
+    return [lo - pad, hi + pad];
+  };
+  const ySm = Object.fromEntries(D.runs.map(r => [r.id, smooth(r.data[y], w)]));
+  const sharedRange = yRange(D.runs.flatMap(r => ySm[r.id]));
+  facets.forEach((f, i) => {
+    const r = Math.floor(i / cols), c = i % cols, s = i ? i + 1 : '';
+    const inRow = Math.min(cols, facets.length - r * cols), off = (cols - inRow) * cw / 2;   // centre incomplete rows
+    const x0 = off + c * cw + gx / 2, x1 = off + (c + 1) * cw - gx / 2;
+    const y1 = 1 - r / rows - (r ? gy / 2 : 0), y0 = 1 - (r + 1) / rows + (r < rows - 1 ? gy / 2 : 0);
+    layout['xaxis' + s] = {domain:[x0, x1], anchor:'y' + s, gridcolor:GRID, zeroline:false, linecolor:'#c9ced8', matches: i ? 'x' : undefined};
+    layout['yaxis' + s] = {domain:[y0, y1], anchor:'x' + s, gridcolor:GRID, zerolinecolor:'#d5d9e1', linecolor:'#c9ced8',
+                           matches: shared && i ? 'y' : undefined, showticklabels: !shared || c === 0 || off > 0,
+                           range: shared ? (i ? undefined : sharedRange) : yRange(D.runs.filter(run => run[facet] === f).flatMap(run => ySm[run.id]))};
+    layout.annotations.push({text:`<b>${facet === 'tilt' ? 'Tilt ' + fmtTilt(f) : 'Repetition ' + f}</b>`,
+                             xref:'paper', yref:'paper', x:x0, xanchor:'left', y:y1, yanchor:'bottom', showarrow:false, font:{size:13}});
+    if (x === winAxis() && W.ok) [[xmin, W.w0], [W.w1, xmax]].filter(([a, b]) => b > a).forEach(([a, b]) =>
+      layout.shapes.push({type:'rect', xref:'x' + s, yref:`y${s} domain`, x0:a, x1:b, y0:0, y1:1,
+                          fillcolor:'#8a93a6', opacity:0.12, line:{width:0}, layer:'below'}));
+    D.runs.filter(run => run[facet] === f).sort((a, b) => a[colorBy] - b[colorBy]).forEach(run => {
+      const cv = run[colorBy], color = colorBy === 'rep' ? D.repColors[cv] : tiltColor(cv);
+      const name = colorBy === 'rep' ? `Rep ${cv}` : fmtTilt(cv);
+      const warn = run.flag ? `<br><span style="color:#b42318">⚠ ${run.flag}</span>` : '';
+      if (raw && w > 1) traces.push({x: run.data[x], y: run.data[y], xaxis:'x' + s, yaxis:'y' + s, mode:'lines',
+          line:{color, width:0.8}, opacity:0.25, hoverinfo:'skip', showlegend:false, legendgroup:String(cv), meta:{raw:true}});
+      traces.push({x: run.data[x], y: ySm[run.id], xaxis:'x' + s, yaxis:'y' + s, mode:'lines',
+          name, legendgroup:String(cv), legendrank: cv, showlegend: !seen.has(cv),
+          line:{color, width:1.8, dash: run.flag ? 'dot' : 'solid'}, meta:{run: run.id, group: String(cv)},
+          hovertemplate:`<b>Tilt ${fmtTilt(run.tilt)} · Rep ${run.rep}</b><br>${col(x).label}: %{x:.2f} ${col(x).unit}<br>${col(y).label}: %{y:.4~g} ${col(y).unit}${warn}<extra></extra>`});
+      seen.add(cv);
+    });
+  });
+  layout.annotations.push(
+    {text: axisTitle(x), xref:'paper', yref:'paper', x:0.5, y:0, yshift:-48, showarrow:false, font:{size:14}},
+    {text: axisTitle(y) + (w > 1 ? ` <span style="color:#6b7385">· smoothed (${smoothLabel(w)})</span>` : ''),
+     xref:'paper', yref:'paper', x:0, xshift:-62, y:0.5, textangle:-90, showarrow:false, font:{size:14}});
+  Plotly.react('tsPlot', traces, layout, CONFIG);
+  applyEmphasis(null);
+}
+
+// Dim everything except the hovered run (temporary) or the focused group (persistent).
+function applyEmphasis(hoverRun) {
+  const gd = $('tsPlot'), idx = [], width = [], opacity = [];
+  gd.data.forEach((t, i) => {
+    if (!t.meta || !t.meta.run) return;
+    const on = hoverRun ? t.meta.run === hoverRun : (focus === null || t.meta.group === focus);
+    const emph = hoverRun ? on : (focus !== null && on);
+    idx.push(i); width.push(emph ? 3 : 1.8); opacity.push(on ? 1 : 0.15);
+  });
+  if (idx.length) Plotly.restyle(gd, {'line.width': width, opacity}, idx);
+}
+function setupHighlight() {
+  const gd = $('tsPlot');
+  gd.on('plotly_hover', ev => { const t = ev.points[0].data; if (t.meta && t.meta.run) applyEmphasis(t.meta.run); });
+  gd.on('plotly_unhover', () => applyEmphasis(null));
+}
+
+// ---------- plot 2 + 3 + table: per-run summary ----------
+function summaries(W) {
+  const y = $('ySel').value, kind = $('statSel').value, norm = $('normSel').value, out = {};
+  D.tilts.forEach(t => {
+    const runs = D.runs.filter(r => r.tilt === t && included(r)).sort((a, b) => a.rep - b.rep);
+    const st = runs.map(r => stat(r, y, kind, W)), sdv = runs.map(r => stat(r, y, 'std', W).v);
+    let vals = st.map(s => s.v), sd = sdv;
+    const base = vals.length ? vals[0] : null;
+    let pctOk = true;
+    if (norm === 'delta') vals = vals.map(v => v === null || base === null ? null : v - base);
+    if (norm === 'pct') {
+      pctOk = base !== null && base > 1e-9;
+      vals = vals.map(v => pctOk && v !== null ? (v - base) / base * 100 : null);
+      sd = sd.map(v => pctOk && v !== null ? v / base * 100 : null);
+    }
+    const pts = runs.map((r, i) => [r.rep, vals[i]]).filter(p => p[1] !== null);
+    const fit = pts.length >= 4 ? linfit(pts.map(p => p[0]), pts.map(p => p[1])) : null;
+    out[t] = {runs, reps: runs.map(r => r.rep), vals, sd, n: st.map(s => s.n), fit,
+              baseRep: runs.length ? runs[0].rep : null, pctOk,
+              flagged: D.runs.filter(r => r.tilt === t && r.flag)};
+  });
+  return out;
+}
+const summaryUnit = y => $('normSel').value === 'pct' ? '%' : col(y).unit;
+function summaryTitle(y, short) {
+  const norm = $('normSel').value, stat = $('statSel').selectedOptions[0].textContent.replace(/ \(.*\)/, '');
+  const pre = norm === 'abs' ? '' : norm === 'delta' ? 'Δ ' : '% Δ ';
+  return short ? `${pre}${stat.toLowerCase()} (${summaryUnit(y)})` : `${pre}${stat} ${col(y).label.toLowerCase()} (${summaryUnit(y)})`;
+}
+const winText = W => `${fmtNum(W.w0)}–${fmtNum(W.w1)} ${col(winAxis()).unit}`;
+
+function drawDegradation(S, W) {
+  const y = $('ySel').value, kind = $('statSel').value, norm = $('normSel').value;
+  const unit = summaryUnit(y), statLabel = $('statSel').selectedOptions[0].textContent;
+  const showSd = $('sdChk').checked && ['mean', 'median'].includes(kind);
+  const traces = [], F = $('clipChk').checked ? fences(D.tilts.flatMap(t => S[t].vals)) : null, off = [];
+  D.tilts.forEach(t => {
+    const s = S[t], color = tiltColor(t);
+    if (!s.reps.length) return;
+    if (F) s.vals.forEach((v, i) => { if (v !== null && (v > F.hi || v < F.lo)) off.push({t, rep: s.reps[i], v, color}); });
+    if (s.fit) {
+      const xa = s.reps[0], xb = s.reps.at(-1);
+      traces.push({x:[xa, xb], y:[s.fit.icpt + s.fit.slope * xa, s.fit.icpt + s.fit.slope * xb], mode:'lines',
+                   line:{color, dash:'dash', width:1.5}, opacity:0.75, hoverinfo:'skip', showlegend:false, legendgroup:String(t)});
+    }
+    // Null at missing repetitions so the line breaks instead of bridging gaps.
+    const full = D.reps.filter(r => r >= s.reps[0] && r <= s.reps.at(-1)), at = r => s.reps.indexOf(r);
+    const pick = arr => full.map(r => at(r) < 0 ? null : arr[at(r)]);
+    traces.push({x:full, y:pick(s.vals), mode:'lines+markers', name:fmtTilt(t), legendgroup:String(t), connectgaps:false,
+                 line:{color, width:2.2}, customdata: full.map(r => at(r) < 0 ? null : [s.n[at(r)], s.runs[at(r)].flag ? '⚠ flagged run' : '']),
+                 marker:{size:9, color, symbol: pick(s.runs.map(r => r.flag ? 'x' : 'circle')), line:{color:'#fff', width:1.5}},
+                 error_y: showSd ? {type:'data', array:pick(s.sd), color, thickness:1, width:4, visible:true} : {visible:false},
+                 hovertemplate:`<b>Tilt ${fmtTilt(t)} · Rep %{x}</b><br>${statLabel}: %{y:.4~g} ${unit}<br>` +
+                               `<span style="color:#6b7385">%{customdata[0]} frames in window ${winText(W)}</span><br>%{customdata[1]}<extra></extra>`});
+  });
+  if (off.length) {
+    const top = F.range[1], bot = F.range[0], inset = 0.035 * (top - bot);
+    traces.push({x: off.map(o => o.rep), y: off.map(o => o.v > F.hi ? top - inset : bot + inset), mode:'markers+text', showlegend:false,
+                 text: off.map(o => fmtNum(o.v)), textposition:'middle right', textfont:{size:11, color: off.map(o => o.color)},
+                 marker:{symbol: off.map(o => o.v > F.hi ? 'triangle-up' : 'triangle-down'), size:12, color: off.map(o => o.color), line:{color:'#fff', width:1}},
+                 customdata: off.map(o => fmtTilt(o.t)),
+                 hovertemplate:`<b>Tilt %{customdata} · Rep %{x}</b><br>${statLabel}: %{text} ${unit}<br>off scale (outlier clipped)<extra></extra>`});
+  }
+  const notes = [];
+  if (off.length) notes.push(`▲/▼ = ${off.length} outlying value${off.length > 1 ? 's' : ''} drawn at the edge of the axis (${off.map(o => `${fmtTilt(o.t)} rep ${o.rep}`).join(', ')}) and saturating the heatmap colour scale; untick “clip outliers” to see the full range.`);
+  if (norm !== 'abs') notes.push('Baseline = earliest included repetition of each tilt: ' +
+    D.tilts.filter(t => S[t].baseRep !== null).map(t => `${fmtTilt(t)} → Rep ${S[t].baseRep}`).join(', ') + '.');
+  const bad = D.tilts.filter(t => !S[t].pctOk);
+  if (norm === 'pct' && bad.length) notes.push(`% change is undefined for non-positive baselines and is hidden for ${bad.map(fmtTilt).join(', ')}; use “Change vs.” instead.`);
+  $('baselineNote').textContent = notes.join(' ');
+  Plotly.react('degPlot', traces, {font:FONT, height:420, margin:{l:80, r:20, t:10, b:55}, paper_bgcolor:'#fff', plot_bgcolor:'#fff',
+    xaxis:{title:{text:'Repetition'}, dtick:1, range:[D.reps[0] - 0.4, D.reps.at(-1) + 0.4], gridcolor:GRID, zeroline:false, linecolor:'#c9ced8'},
+    yaxis:{title:{text:summaryTitle(y)}, gridcolor:GRID, zeroline: norm !== 'abs', zerolinecolor:'#9aa1af', linecolor:'#c9ced8',
+           range: F ? F.range : undefined, autorange: F ? false : true},
+    legend:{title:{text:'<b>Tilt</b>'}}, hovermode:'closest'}, CONFIG);
+}
+
+const DIVERGING = [[0, '#2166ac'], [0.25, '#67a9cf'], [0.5, '#f7f7f7'], [0.75, '#ef8a62'], [1, '#b2182b']];
+function drawHeatmap(S, W) {
+  const y = $('ySel').value, unit = summaryUnit(y), norm = $('normSel').value;
+  const cell = (t, rp, arr) => { const i = S[t].reps.indexOf(rp); return i < 0 ? null : arr[i]; };
+  const z = D.tilts.map(t => D.reps.map(rp => cell(t, rp, S[t].vals)));
+  const nfr = D.tilts.map(t => D.reps.map(rp => cell(t, rp, S[t].n)));
+  const text = z.map(row => row.map(v => v === null ? '' : fmtNum(v)));
+  const F = $('clipChk').checked ? fences(z.flat().filter(v => v !== null)) : null;
+  const M = Math.max(...(F ? [F.lo, F.hi] : z.flat().filter(v => v !== null)).map(Math.abs)) || 1;
+  const scale = norm === 'abs' ? {colorscale:'Viridis', ...(F ? {zmin:F.lo, zmax:F.hi} : {})} : {colorscale:DIVERGING, zmin:-M, zmax:M};
+  const flags = D.runs.filter(r => r.flag);
+  const traces = [{type:'heatmap', z, x:D.reps, y:D.tilts.map(fmtTilt), text, customdata:nfr, texttemplate:'%{text}', textfont:{size:12},
+      ...scale, hoverongaps:false, xgap:3, ygap:3,
+      colorbar:{title:{text:summaryTitle(y, true), side:'right'},
+                thickness:12, outlinewidth:0, len:0.9},
+      hovertemplate:'Tilt %{y} · Rep %{x}<br>%{z:.4~g} ' + unit + '<br><span style="color:#6b7385">%{customdata} frames in window</span><extra></extra>'}];
+  // Excluded flagged runs: a large ⚠ in the empty cell. Included ones: a small ⚠ in the cell corner next to the value.
+  if (flags.length) traces.push({type:'scatter', mode:'text', x:flags.map(r => included(r) ? r.rep + 0.36 : r.rep),
+      y:flags.map(r => fmtTilt(r.tilt)), text:flags.map(() => '⚠'), textposition:flags.map(r => included(r) ? 'top center' : 'middle center'),
+      textfont:{size:flags.map(r => included(r) ? 11 : 16), color:'#b42318'}, customdata:flags.map(r => [r.flag, r.rep]),
+      hovertemplate:'Tilt %{y} · Rep %{customdata[1]}<br>⚠ %{customdata[0]}<extra>flagged</extra>', showlegend:false});
+  Plotly.react('heatPlot', traces,
+    {font:FONT, height:Math.max(300, 70 + 58 * D.tilts.length), margin:{l:60, r:10, t:10, b:55}, paper_bgcolor:'#fff', plot_bgcolor:'#fff',
+     xaxis:{title:{text:'Repetition'}, dtick:1, showgrid:false, zeroline:false, range:[D.reps[0] - 0.5, D.reps.at(-1) + 0.5]},
+     yaxis:{title:{text:'Tilt angle'}, showgrid:false, zeroline:false, type:'category', categoryorder:'array', categoryarray:D.tilts.map(fmtTilt)}}, CONFIG);
+}
+
+function drawTable(S) {
+  const unit = summaryUnit($('ySel').value), norm = $('normSel').value;
+  const rows = D.tilts.map(t => {
+    const f = S[t].fit, n = S[t].vals.filter(v => v !== null).length;
+    const f0 = f ? f.icpt + f.slope * S[t].reps[0] : null;
+    const rel = f && norm === 'abs' && f0 > 0 ? `${f.slope >= 0 ? '+' : '−'}${fmtNum(Math.abs(f.slope / f0 * 100))} %/rep` : '–';
+    const slope = f ? `${f.slope >= 0 ? '+' : '−'}${fmtNum(Math.abs(f.slope))} ± ${fmtNum(f.se)} ${unit}/rep` : '<span style="color:#9aa1af">n &lt; 4</span>';
+    return `<tr><td><span class="dot" style="background:${tiltColor(t)}"></span>${fmtTilt(t)}</td><td class="num">${n}</td>` +
+           `<td class="num">${slope}</td><td class="num">${f ? f.r2.toFixed(2) : '–'}</td><td class="num">${rel}</td></tr>`;
+  });
+  $('trendTable').innerHTML = '<tr><th>Tilt</th><th class="num">Runs</th><th class="num">Slope ± SE</th><th class="num">R²</th><th class="num">Rel.</th></tr>' + rows.join('');
+}
+
+function drawQuality() {
+  const items = D.runs.filter(r => r.flag).map(r => `<li><b>${r.id}</b>: ${r.flag} — ${included(r) ? 'included (dotted line, × marker)' : 'excluded from the summaries'}</li>`)
+    .concat(D.skipped.map(s => `<li>${s.replace(/^([^:]+):/, '<b>$1</b>:')} — not loaded</li>`));
+  $('quality').innerHTML = items.length ? `<b>Data quality</b><ul>${items.join('')}</ul>` : '';
+}
+
+// ---------- wiring ----------
+[...D.xOptions].reverse().forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = col(k).label + (k === 'time_ms' ? ' (same duration)' : ' (same stretch of surface)'); $('winAxis').appendChild(o); });
+function drawSummaries() {
+  const W = windowState();
+  drawQuality();
+  if (!W.ok) return;
+  const S = summaries(W);
+  drawDegradation(S, W); drawHeatmap(S, W); drawTable(S);
+}
+function updateAll() { $('smoothVal').textContent = smoothLabel(+$('smooth').value); drawTimeSeries(); drawSummaries(); }
+['ySel', 'xSel', 'smooth', 'rawChk', 'sharedChk', 'robustChk', 'w0', 'w1'].forEach(id => $(id).addEventListener('input', updateAll));
+$('facetSel').addEventListener('input', () => { fillFocus(); focus = $('focusSel').value || null; updateAll(); });
+$('focusSel').addEventListener('input', () => { focus = $('focusSel').value || null; applyEmphasis(null); });
+['winAxis', 'flagChk'].forEach(id => $(id).addEventListener('input', () => { resetWindow(); updateAll(); }));
+$('winReset').addEventListener('click', () => { resetWindow(); updateAll(); });
+['statSel', 'normSel', 'sdChk', 'clipChk'].forEach(id => $(id).addEventListener('input', drawSummaries));
+
+const nFlag = D.runs.filter(r => r.flag).length;
+$('subtitle').textContent = `${D.runs.length} runs${nFlag ? ` (${nFlag} flagged)` : ''} · tilt angles ${D.tilts.map(fmtTilt).join(', ')} · ` +
+  `repetitions ${D.reps[0]}–${D.reps.at(-1)} · ${(1 / D.dtMs).toFixed(0)} kHz sampling · generated ${D.generated} ` +
+  `(latest run processed ${D.latestRun})`;
+$('footer').textContent = `Source: ${D.source} · re-run plot_results.py to include runs recorded after ${D.generated}`;
+fillFocus();
+resetWindow();
+updateAll();
+setupHighlight();
+</script>
+</body>
+</html>
