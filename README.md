@@ -25,6 +25,18 @@ flowchart LR
 
 [main.py](main.py) runs the side view and then the front view of each experiment folder (`process_folder`). A view runs only if it is pending, and the front view also waits until the side view has written `side/result.csv`.
 
+Three folder trees share the same relative structure:
+
+| Tree | Path (config.yaml) | Contents |
+|------|--------------------|----------|
+| Input | `Root_Address/Video_Addresses` (`.../Samba-Share/RobotScientistClips`) | Uploaded videos. Watched; never modified by AVP |
+| Work | `Temporary_Processing.address` (`/run/media/roboprocessing/Data/tmp_processing`) | Everything below: frames, detail images, CSVs, logs. Outside the Samba share, so the thousands of images are not synced. The video is hard-linked in while it is processed |
+| Mirror | `Root_Address/Output_Address` (`.../Samba-Share/RoboprocessingOutput`) | Only the `*.csv`, `*.log`, `*.txt` (error logs) and `.done` files of the work folder, copied after each view and after the merge |
+
+For example `RobotScientistClips/2026-10-20_15-20-34-103845/tilt-25-rep-001/` is processed in `tmp_processing/2026-10-20_15-20-34-103845/tilt-25-rep-001/` and mirrored to `RoboprocessingOutput/2026-10-20_15-20-34-103845/tilt-25-rep-001/`. The mirror is the record of what has been processed, so trimming the work folder never causes reprocessing. If a folder still needs its front view or merge but its side work outputs were trimmed, the folder is processed again from the start.
+
+The work folder is kept below `Temporary_Processing.max_files` (3,000,000) files and `max_size_gb` (500 GB). After each video, the least recently processed experiment work folders are deleted until both limits are met. Whole experiment folders are deleted, never single files, and never the folder being processed. Usage per folder is recorded in `tmp_processing/.avp_usage.json`, so the work folder is fully counted only once, on first start.
+
 | # | View | Stage | Call | Output |
 |---|------|-------|------|--------|
 | 0 | both | Clean | `cleanUP(folder, view)` | Deletes partial outputs of an interrupted run in `<view>/` |
@@ -44,32 +56,34 @@ If any stage raises, the exception is written to `<view>/log_<timestamp>.log` an
 
 ## Folder layout
 
-Each experiment is a folder that contains **exactly one** video (`.mp4 .mov .avi .mkv .mpeg .mpg .m4v`):
+Each experiment is a folder in the input tree that contains **exactly one** video (`.mp4 .mov .avi .mkv .mpeg .mpg .m4v`). Its work folder in `tmp_processing/<relative path>/` holds (files marked * are also mirrored to `RoboprocessingOutput/<relative path>/`):
 
 ```
 <experiment>/
-├── <video>.mp4
-├── result.csv                  # post_run: side/result.csv + front/result.csv, one row per frame
-├── post_run_error.txt          # Only if a post_run check failed
+├── <video>.mp4                 # Hard link, only while the folder is processed
+├── .done                       # * post_run finished
+├── result.csv                  # * post_run: side/result.csv + front/result.csv, one row per frame
+├── post_run_error.txt          # * Only if a post_run check failed
 ├── side/
 │   ├── frames/Rotation.png     # BaseLine diagnostic (raw frames are deleted after success)
 │   ├── frames_rotated/         # BaseLine, then filtered by Utilities
 │   ├── databases/              # Cropped, inverted drop images
 │   │   ├── frame_*.png
-│   │   ├── detections.csv      # image, endpoint, beginning
-│   │   └── error_log.txt       # per-frame CaMeasurer failures (if any)
+│   │   ├── detections.csv      # * image, endpoint, beginning
+│   │   └── error_log.txt       # * per-frame CaMeasurer failures (if any)
 │   ├── SR_edge/                # One diagnostic figure per frame
-│   ├── result.csv
-│   ├── result_corrected.csv
-│   ├── .done
-│   └── log_<timestamp>.log     # Only on failure
+│   ├── result.csv              # *
+│   ├── result_corrected.csv    # *
+│   ├── .done                   # *
+│   └── log_<timestamp>.log     # * Only on failure
 └── front/
     ├── frames/Rotation.png
     ├── frames_rotated/         # Same frame names as side/frames_rotated
     ├── SR_edge/                # One plot of the boundary and features per frame
-    ├── result.csv
-    ├── .done
-    └── log_<timestamp>.log     # Only on failure
+    ├── result.csv              # *
+    ├── .done                   # *
+    ├── error_log.txt           # * per-frame DropGeometry failures (if any)
+    └── log_<timestamp>.log     # * Only on failure
 ```
 
 `side/result.csv` columns: `file number`, `time (s)`, `x_center (cm)`, `adv (degree)`, `rec (degree)`, `contact_line_length (cm)`, `y_center (cm)`, `middle_angle_degree (degree)`, `velocity (cm/s)`. For `front/result.csv` see [DropGeometry](DropGeometry/README.md); its `file number` matches the side view.
@@ -109,14 +123,16 @@ python main.py -C front                          # Recompute the front view of e
 | Flag | Default | Meaning |
 |------|---------|---------|
 | `-C`, `--clean [VIEW ...]` | off | Delete the outputs, `.done` and `*.log` of these views (`side`, `front`; default both), then continue processing |
-| `--video-list` | — | Folders to clean; without it `-C` cleans every folder under `Root_Address` |
-| `--daemon` | off | Watch `Root_Address` instead of a single pass (see below) |
+| `--video-list` | — | Input video folders to clean (in the work folder and the mirror); without it `-C` cleans every video folder |
+| `--daemon` | off | Watch `Root_Address/Video_Addresses` instead of a single pass (see below) |
 | `--poll-interval` | `Daemon.poll_interval` (10) | Seconds between rescans in daemon mode |
 | `--stability-seconds` | `Daemon.stability_seconds` (60) | A video must go unwritten this long before its folder is queued (avoids half-uploaded videos) |
 
-The source folders are `Root_Address/*` from [config.yaml](config.yaml). A view is pending when `<view>/` has no `.done`, no `error_log.txt` and no `*.log`.
+Source folders are discovered recursively beneath `Root_Address/Video_Addresses` from [config.yaml](config.yaml), at any depth. Discovery stops descending into a folder once it contains a matching video, avoiding its processing outputs. The video stem must equal its parent folder name or start with that name followed by `_`, for example `tilt-25-rep-002/tilt-25-rep-002_4000fps.mp4`. Exactly one matching video is required for processing; unrelated video names and hidden temporary uploads are ignored.
 
-In daemon mode a watcher thread rescans `Root_Address/*` for video files uploaded through Samba. A folder with a pending view is queued once all its videos are non-empty and none has been written (mtime and ctime) for `stability_seconds`. A single worker then processes the queue in upload order. Before processing, the worker checks the video again; if it was rewritten, the folder is dropped from the queue and queued again once it stops changing. A processed folder is queued again only if its video changes.
+A view is pending when `<view>/` in the mirror has no `.done`, no `error_log.txt` and no `*.log`.
+
+In daemon mode a watcher thread repeats this recursive discovery every `poll_interval` seconds, so newly created date folders and experiment folders are found without restarting. A folder with a pending view is queued once all its matching videos are non-empty and none has been written (mtime and ctime) for `stability_seconds`. A single worker then processes the queue in upload order. Before processing, the worker checks the video again; if it was rewritten, the folder is dropped from the queue and queued again once it stops changing. A processed folder is queued again only if its video changes.
 
 [main_side.py](main_side.py) and [main_front.py](main_front.py) run a single view.
 
@@ -128,9 +144,13 @@ All modules read [config.yaml](config.yaml) through `BaseUtils.config`.
 
 | Key | Value | Used by |
 |-----|-------|---------|
-| `Root_Address` | `/run/media/roboprocessing/Data/Samba-Share/RobotScientistClips` | main.py (folders to process; the Samba share) |
+| `Root_Address` | `/run/media/roboprocessing/Data/Samba-Share` | main.py (the Samba share) |
+| `Video_Addresses` | `RobotScientistClips` | main.py: input tree under `Root_Address`, watched for videos |
+| `Output_Address` | `RoboprocessingOutput` | main.py: mirror under `Root_Address` (CSVs, logs, `.done`) |
+| `Temporary_Processing.address` | `/run/media/roboprocessing/Data/tmp_processing` | main.py: work tree (frames and images), outside the share |
+| `Temporary_Processing.max_files` / `max_size_gb` | `3000000` / `500` | main.py: limits of the work tree; oldest experiment folders are deleted when exceeded |
 | `Daemon.stability_seconds` | `60` | main.py `--daemon`: seconds a video must go unwritten before its folder is queued |
-| `Daemon.poll_interval` | `10` | main.py `--daemon`: seconds between scans of `Root_Address` |
+| `Daemon.poll_interval` | `10` | main.py `--daemon`: seconds between scans of `Root_Address/Video_Addresses` |
 | `Video.cropping_properties_side.{X,Y,WIDTH,HEIGHT}` | `750, 0, 1000, 188` | FrameExtractor (side ffmpeg crop); `WIDTH` also by Utilities |
 | `Video.cropping_properties_front.{X,WIDTH}` | `283, 240` | FrameExtractor (front ffmpeg crop; `Y` and `HEIGHT` from the side) |
 | `Video.Original_image.{WIDTH,HEIGHT}` | `2048, 192` | Reference only |

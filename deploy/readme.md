@@ -15,7 +15,7 @@ journalctl -u avp.service -f
 
 # deploy
 
-Runs AVP as a systemd service that watches `Root_Address` (the Samba share) for uploaded videos. A folder is queued once its video has not been written for `Daemon.stability_seconds` (config.yaml, default 60 s); queued folders are processed one at a time, oldest upload first. `Root_Address` is rescanned every `Daemon.poll_interval` seconds.
+Runs AVP as a systemd service that watches `Root_Address/Video_Addresses` (RobotScientistClips on the Samba share) for uploaded videos. Processing happens in `Temporary_Processing.address` (outside the share); only CSVs, logs and `.done` markers are mirrored to `Root_Address/Output_Address`. A folder is queued once its video has not been written for `Daemon.stability_seconds` (config.yaml, default 60 s); queued folders are processed one at a time, oldest upload first. The input folder is rescanned every `Daemon.poll_interval` seconds.
 
 [avp.service](avp.service) starts, as user `roboprocessing`:
 

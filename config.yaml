@@ -1,5 +1,13 @@
-Root_Address: "/run/media/roboprocessing/Data/Samba-Share/RobotScientistClips"
+Root_Address:     "/run/media/roboprocessing/Data/Samba-Share"
+Video_Addresses:  "RobotScientistClips"   # watched input (relative to Root_Address), searched recursively for videos
+Output_Address:   "RoboprocessingOutput"  # mirror of Video_Addresses (relative to Root_Address): only CSVs, logs and .done markers
 
+# Working folder (outside the Samba share) for frames and processing detail images, mirroring Video_Addresses.
+# When it holds more than max_files files or max_size_gb GB, the least recently processed experiment folders are deleted.
+Temporary_Processing:
+  address     : "/run/media/roboprocessing/Data/tmp_processing"
+  max_files   : 3000000
+  max_size_gb : 500
 # Daemon mode (python main.py --daemon): watches Root_Address for videos uploaded through Samba
 Daemon:
   stability_seconds : 60  # a video is queued only after it has not been written for this many seconds

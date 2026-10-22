@@ -6,15 +6,18 @@
     Description:
         Unified pipeline. For every video folder it processes the side view first (contact angles, CaMeasurer) and
         then the front view (drop geometry, DropGeometry). The front view keeps only the frames the side view kept.
-        The video stays in the folder; all outputs go to `<folder>/side` and `<folder>/front`.
-        Once both views finish, `post_run` checks that their frames match and merges both CSVs into `<folder>/result.csv`.
+        Videos are found under `Root_Address/Video_Addresses` and are never modified. Each one is processed in
+        `Temporary_Processing.address/<relative path>` (frames and detail images, outside the Samba share); only its CSVs,
+        logs and `.done` markers are mirrored to `Root_Address/Output_Address/<relative path>`, which is also the record of
+        what has been processed. Once both views finish, `post_run` checks that their frames match and merges both CSVs
+        into `result.csv`.
 
     Usage:
         python main.py                                  # one pass over all folders with a pending view
-        python main.py --daemon                         # watch Root_Address; queue each folder once its video
+        python main.py --daemon                         # watch Video_Addresses; queue each folder once its video
                                                         # has not been written for Daemon.stability_seconds
         python main.py -C                               # delete all side and front outputs first, then process
-        python main.py -C front --video-list /path/a    # redo only the front view of these folders
+        python main.py -C front --video-list /path/a    # redo only the front view of these video folders
 """
 import  os
 import  glob
@@ -23,6 +26,7 @@ import  queue
 import  shutil
 import  signal
 import  argparse
+import  json
 import  threading
 import  traceback
 from    typing  import  Callable
@@ -42,7 +46,17 @@ SIDE: str = "side"
 FRONT: str = "front"
 VIEWS: tuple[str, ...] = (SIDE, FRONT)
 
-VIDEO_SOURCE_GLOB: str = os.path.join(str(BaseUtils.config['Root_Address']), "*")
+INPUT_ROOT: str = os.path.normpath(os.path.join(str(BaseUtils.config['Root_Address']), str(BaseUtils.config['Video_Addresses'])))
+OUTPUT_ROOT: str = os.path.normpath(os.path.join(str(BaseUtils.config['Root_Address']), str(BaseUtils.config['Output_Address'])))
+VIDEO_SOURCE_GLOB: str = os.path.join(INPUT_ROOT, "*")
+
+TMP_CONFIG: dict = BaseUtils.config.get("Temporary_Processing") or {}  # type: ignore
+PROCESSING_ROOT: str = os.path.normpath(str(TMP_CONFIG.get("address", "/run/media/roboprocessing/Data/tmp_processing")))
+TMP_MAX_FILES: int = int(TMP_CONFIG.get("max_files", 3_000_000))
+TMP_MAX_BYTES: int = int(float(TMP_CONFIG.get("max_size_gb", 500)) * 1e9)
+
+DONE: str = ".done"
+MIRRORED_SUFFIXES: tuple[str, ...] = (".csv", ".log", ".txt")   # plus `.done` markers
 FRAMES_FOLDER: str = str(BaseUtils.config["frame_folder"])
 ROTATED_FRAMES_FOLDER: str = str(BaseUtils.config["rotated_frames_folder"])
 DATABASES_FOLDER: str = str(BaseUtils.config["databases_folder"])
@@ -74,7 +88,7 @@ def delete_empty_folders(path: str) -> None:
 
 def cleanUP(_folder: str, view: str) -> None:
     """Deletes every output of one view (`<folder>/<view>`), including its `.done` marker and logs, and the merged result built from it."""
-    for name in (MERGED_CSV, POST_RUN_ERROR):
+    for name in (MERGED_CSV, POST_RUN_ERROR, DONE):
         path = os.path.join(_folder, name)
         if os.path.isfile(path):
             os.remove(path)
@@ -95,15 +109,192 @@ def cleanUP(_folder: str, view: str) -> None:
         delete_empty_folders(address)
 
 
+def relative_folder(_folder: str) -> str:
+    """Path of a video folder relative to `Root_Address/Video_Addresses`."""
+    rel = os.path.relpath(os.path.abspath(_folder), INPUT_ROOT)
+    if rel in (os.curdir, os.pardir) or rel.startswith(os.pardir + os.sep):
+        raise ValueError(f"{_folder} is not inside {INPUT_ROOT}")
+    return rel
+
+
+def work_folder(_folder: str) -> str:
+    """Where a video folder is processed: frames, detail images and results (`Temporary_Processing.address/<relative path>`)."""
+    return os.path.join(PROCESSING_ROOT, relative_folder(_folder))
+
+
+def output_folder(_folder: str) -> str:
+    """Mirror of a video folder holding only its CSVs, logs and `.done` markers (`Root_Address/Output_Address/<relative path>`)."""
+    return os.path.join(OUTPUT_ROOT, relative_folder(_folder))
+
+
+def reset_view(_folder: str, view: str) -> None:
+    """Deletes one view of a video folder in both the work folder and the output mirror, so it is processed again."""
+    for tree in (work_folder(_folder), output_folder(_folder)):
+        cleanUP(tree, view)
+
+
 def cleanStart(Video_list: list[str], views: tuple[str, ...] = VIEWS) -> None:
     for _folder in tqdm.tqdm(Video_list, desc="Cleaning"):
         for view in views:
-            cleanUP(_folder, view)
+            reset_view(_folder, view)
+
+
+def mirror_results(work: str, out: str) -> None:
+    """
+    Copies the CSVs, logs and `.done` markers of a work folder to the output mirror, keeping the folder structure.
+    Unchanged files are skipped, each file is replaced atomically and `.done` markers are copied last, so the
+    mirror never shows a view as done without its results.
+    """
+    selected: list[str] = []
+    for root, _dirs, files in os.walk(work):
+        selected.extend(os.path.join(root, name) for name in files if name == DONE or name.endswith(MIRRORED_SUFFIXES))
+
+    for src in sorted(selected, key=lambda path: os.path.basename(path) == DONE):
+        dst = os.path.join(out, os.path.relpath(src, work))
+        st = os.stat(src)
+        try:
+            dst_st = os.stat(dst)
+            if (dst_st.st_size, dst_st.st_mtime_ns) == (st.st_size, st.st_mtime_ns):
+                continue
+        except FileNotFoundError:
+            pass
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        partial = os.path.join(os.path.dirname(dst), f".{os.path.basename(dst)}.partial")
+        shutil.copy2(src, partial)
+        os.replace(partial, dst)
+
+
+def link_videos(_folder: str, work: str) -> list[str]:
+    """Hard-links (or copies, across file systems) the videos of a video folder into its work folder."""
+    os.makedirs(work, exist_ok=True)
+    with os.scandir(work) as entries:
+        for entry in entries:
+            if FrameExtractor.video_matches_folder(work, entry.name) and not entry.is_dir(follow_symlinks=False):
+                os.remove(entry.path)
+
+    links: list[str] = []
+    for name, *_ in video_signature(_folder) or ():
+        src, dst = os.path.join(_folder, name), os.path.join(work, name)
+        try:
+            os.link(src, dst)
+        except OSError:
+            shutil.copy2(src, dst)
+        links.append(dst)
+    return links
+
+
+class ProcessingSpace:
+    """
+    Keeps `Temporary_Processing.address` below `max_files` files and `max_size_gb` by deleting whole experiment work
+    folders, least recently processed first. Usage is tracked per work folder in `<address>/.avp_usage.json`, so the
+    millions of files are only counted once (on first start) instead of on every check.
+    """
+    INDEX: str = ".avp_usage.json"
+
+    def __init__(self, root: str = PROCESSING_ROOT, max_files: int = TMP_MAX_FILES, max_bytes: int = TMP_MAX_BYTES) -> None:
+        self.root = root
+        self.max_files = max_files
+        self.max_bytes = max_bytes
+        self.usage: dict[str, dict[str, float]] = {}
+        os.makedirs(root, exist_ok=True)
+        self._load()
+
+    def _load(self) -> None:
+        try:
+            with open(os.path.join(self.root, self.INDEX), encoding="utf-8") as f:
+                self.usage = {rel: entry for rel, entry in json.load(f).items() if os.path.isdir(os.path.join(self.root, rel))}
+        except (OSError, ValueError, AttributeError):
+            self.usage = {}
+        # Work folders left behind without an entry (e.g. by a crash) are counted once here
+        for rel in self._find_work_folders():
+            if rel not in self.usage:
+                path = os.path.join(self.root, rel)
+                self.usage[rel] = {**self._measure(path), "last_used": os.path.getmtime(path)}
+        self._save()
+
+    def _find_work_folders(self) -> list[str]:
+        found: list[str] = []
+        for root, dirs, _files in os.walk(self.root):
+            if root != self.root and any(view in dirs for view in VIEWS):
+                found.append(os.path.relpath(root, self.root))
+                dirs.clear()
+        return found
+
+    @staticmethod
+    def _measure(path: str) -> dict[str, float]:
+        files, size = 0, 0
+        for root, _dirs, names in os.walk(path):
+            for name in names:
+                try:
+                    size += os.lstat(os.path.join(root, name)).st_size
+                    files += 1
+                except OSError:
+                    continue
+        return {"files": files, "bytes": size}
+
+    def _save(self) -> None:
+        index = os.path.join(self.root, self.INDEX)
+        with open(index + ".partial", "w", encoding="utf-8") as f:
+            json.dump(self.usage, f)
+        os.replace(index + ".partial", index)
+
+    def totals(self) -> tuple[int, int]:
+        return int(sum(e["files"] for e in self.usage.values())), int(sum(e["bytes"] for e in self.usage.values()))
+
+    def update(self, work: str) -> None:
+        """Records the current size of a work folder (call after processing it)."""
+        rel = os.path.relpath(work, self.root)
+        if os.path.isdir(work):
+            self.usage[rel] = {**self._measure(work), "last_used": time.time()}
+        else:
+            self.usage.pop(rel, None)
+        self._save()
+
+    def enforce(self, keep: str | None = None) -> None:
+        """Deletes the least recently processed work folders (never `keep`) until both limits are met."""
+        keep_rel = os.path.relpath(keep, self.root) if keep else None
+        files, size = self.totals()
+        while files > self.max_files or size > self.max_bytes:
+            candidates = sorted((e["last_used"], rel) for rel, e in self.usage.items() if rel != keep_rel)
+            if not candidates:
+                print(f"{self.root} is over its limit ({files} files, {size / 1e9:.1f} GB) but only the active folder is left.", flush=True)
+                break
+            _last_used, rel = candidates[0]
+            path = os.path.join(self.root, rel)
+            shutil.rmtree(path, ignore_errors=True)
+            parent = os.path.dirname(path)
+            while parent != self.root and parent.startswith(self.root + os.sep):
+                try:
+                    os.rmdir(parent)
+                except OSError:
+                    break
+                parent = os.path.dirname(parent)
+            entry = self.usage.pop(rel)
+            files, size = files - int(entry["files"]), size - int(entry["bytes"])
+            print(f"Deleted temporary folder {path} ({int(entry['files'])} files, {entry['bytes'] / 1e9:.2f} GB) to stay within "
+                  f"{self.max_files} files / {self.max_bytes / 1e9:g} GB.", flush=True)
+        self._save()
 
 
 def discover_folders(pattern: str = VIDEO_SOURCE_GLOB) -> list[str]:
-    """List candidate video folders (directories only), sorted."""
-    return [folder for folder in sorted(glob.glob(pattern)) if os.path.isdir(folder)]
+    """Recursively find video folders beneath the roots matched by a wildcard pattern."""
+    def on_error(error: OSError) -> None:
+        raise error
+
+    folders: set[str] = set()
+    for source in sorted(glob.glob(pattern, recursive=True)):
+        if not os.path.isdir(source):
+            continue
+        for folder, dirs, files in os.walk(source, onerror=on_error):
+            if any(
+                FrameExtractor.video_matches_folder(folder, name)
+                and os.path.isfile(os.path.join(folder, name))
+                and not os.path.islink(os.path.join(folder, name))
+                for name in files
+            ):
+                folders.add(os.path.normpath(folder))
+                dirs.clear()
+    return sorted(folders)
 
 
 def is_pending(_folder: str, view: str) -> bool:
@@ -141,7 +332,15 @@ def needs_post_run(_folder: str) -> bool:
 
 
 def needs_processing(_folder: str) -> bool:
-    return bool(pending_views(_folder)) or needs_post_run(_folder)
+    """True if a video folder still has a view or the merge to do, according to its output mirror."""
+    out = output_folder(_folder)
+    return bool(pending_views(out)) or needs_post_run(out)
+
+
+def has_work_results(work: str, view: str) -> bool:
+    """True if the work folder still holds a view's results and leveled frames (the temporary folder may have been cleaned)."""
+    address = os.path.join(work, view)
+    return os.path.isfile(os.path.join(address, 'result.csv')) and bool(glob.glob(os.path.join(address, ROTATED_FRAMES_FOLDER, "frame_*")))
 
 
 def video_signature(_folder: str) -> VideoSignature | None:
@@ -150,8 +349,7 @@ def video_signature(_folder: str) -> VideoSignature | None:
     try:
         with os.scandir(_folder) as entries:
             for entry in entries:
-                # Hidden files are temporary upload files (e.g. rsync's `.name.mp4.XXXXXX`)
-                if entry.name.startswith('.') or not entry.name.lower().endswith(FrameExtractor.VIDEO_EXTENSIONS):
+                if not FrameExtractor.video_matches_folder(_folder, entry.name):
                     continue
                 if not entry.is_file(follow_symlinks=False):
                     continue
@@ -180,9 +378,10 @@ def frame_index(path: str) -> int:
 
 
 def delete_raw_frames(address: str) -> None:
-    """Deletes the extracted frames of a finished view. Leveled frames and `frames/Rotation.png` are kept."""
+    """Deletes the extracted frames of a finished view. Leveled frames (needed by the front view and post_run) and `frames/Rotation.png` are kept."""
     for image in glob.glob(os.path.join(address, FRAMES_FOLDER, "frame_*")):
         os.remove(image)
+
 
 
 class Pipeline:
@@ -193,6 +392,7 @@ class Pipeline:
         self.levelers   = {view: BaseLine.BaseLine(SECONDARY_ADDRESS=view) for view in VIEWS}
         self.yolo       = Utilities.YoloWalker(num_workers=10)
         self.s4         = CaMeasurer.processes_mp_shared(num_workers=8)
+        self.space      = ProcessingSpace()
 
     def close(self) -> None:
         self.yolo.close()
@@ -256,17 +456,19 @@ def process_front(_folder: str, pipeline: Pipeline) -> None:
 
 def run_view(_folder: str, view: str, step: Callable[[str, Pipeline], None], pipeline: Pipeline) -> None:
     """
-    Runs one view from a clean state, logging (not raising) on failure.
+    Runs one view of a video folder from a clean state in its work folder, logging (not raising) on failure.
     On success writes `<view>/.done` and deletes the raw frames; on failure the log in `<view>/` stops the view from being retried.
+    Either way the view's CSVs, logs and `.done` are then mirrored to the output folder.
     """
-    address = os.path.join(_folder, view)
-    cleanUP(_folder, view)  # a pending view can still hold partial outputs of an interrupted run
+    work = work_folder(_folder)
+    address = os.path.join(work, view)
+    reset_view(_folder, view)  # a pending view can still hold partial outputs of an interrupted run
     try:
-        print(f"Processing {view} view: {_folder}")
-        step(_folder, pipeline)
+        print(f"Processing {view} view: {_folder} (in {work})")
+        step(work, pipeline)
 
         if not os.path.isfile(os.path.join(address, 'error_log.txt')):
-            with open(os.path.join(address, '.done'), 'w') as f:
+            with open(os.path.join(address, DONE), 'w') as f:
                 f.write('Processing completed successfully.\n')
             delete_raw_frames(address)
 
@@ -274,7 +476,9 @@ def run_view(_folder: str, view: str, step: Callable[[str, Pipeline], None], pip
         os.makedirs(address, exist_ok=True)
         logger = logException.LogException(base_path=address)
         logger.log_exception(e, custom_message=f"Error processing {view} view of folder: {_folder}", Verbose=True)
-        print(f"Error processing {view} view of {_folder}. Check the log in {address} for details.")
+        print(f"Error processing {view} view of {_folder}. Check the log in {output_folder(_folder)}/{view} for details.")
+    finally:
+        mirror_results(work, output_folder(_folder))
 
 
 def rotated_frame_names(address: str) -> list[str]:
@@ -372,23 +576,48 @@ def post_run(_folder: str) -> pd.DataFrame:
 
 
 def process_folder(_folder: str, pipeline: Pipeline) -> None:
-    """Runs the side view, then the front view, of one video folder (each only if pending), then merges their results."""
-    if is_pending(_folder, SIDE):
-        run_view(_folder, SIDE, process_side, pipeline)
+    """
+    Processes one video folder in its work folder: the side view, then the front view (each only if pending according
+    to the output mirror), then merges their results. Afterwards the work folder's usage is recorded and the
+    temporary folder is trimmed back to its limits.
+    """
+    work, out = work_folder(_folder), output_folder(_folder)
+    space: ProcessingSpace = pipeline.space
+    space.enforce(keep=work)
+    links = link_videos(_folder, work)
+    try:
+        # The temporary folder may have been trimmed since an interrupted run: redo the views whose work outputs are gone
+        if (is_pending(out, FRONT) or needs_post_run(out)) and not is_pending(out, SIDE) and not has_work_results(work, SIDE):
+            for view in VIEWS:
+                reset_view(_folder, view)
+        elif needs_post_run(out) and not has_work_results(work, FRONT):
+            reset_view(_folder, FRONT)
 
-    if is_pending(_folder, FRONT):
-        if side_has_results(_folder):
-            run_view(_folder, FRONT, process_front, pipeline)
-        else:
-            print(f"Skipping front view of {_folder}: the side view has no results.")
+        if is_pending(out, SIDE):
+            run_view(_folder, SIDE, process_side, pipeline)
 
-    if needs_post_run(_folder):
-        try:
-            post_run(_folder)
-        except Exception:
-            with open(os.path.join(_folder, POST_RUN_ERROR), 'a', encoding='utf-8') as f:
-                f.write(traceback.format_exc())
-            print(f"Error merging the results of {_folder}; see {POST_RUN_ERROR}.")
+        if is_pending(out, FRONT):
+            if side_has_results(out):
+                run_view(_folder, FRONT, process_front, pipeline)
+            else:
+                print(f"Skipping front view of {_folder}: the side view has no results.")
+
+        if needs_post_run(out):
+            try:
+                post_run(work)
+                with open(os.path.join(work, DONE), 'w', encoding='utf-8') as f:
+                    f.write("")
+            except Exception:
+                with open(os.path.join(work, POST_RUN_ERROR), 'a', encoding='utf-8') as f:
+                    f.write(traceback.format_exc())
+                print(f"Error merging the results of {_folder}; see {os.path.join(out, POST_RUN_ERROR)}.")
+    finally:
+        for link in links:
+            if os.path.lexists(link):
+                os.remove(link)
+        mirror_results(work, out)
+        space.update(work)
+        space.enforce(keep=work)
 
 
 class GracefulShutdown:
@@ -458,7 +687,7 @@ class UploadQueue:
 
 
 def watch_uploads(uploads: UploadQueue, stop: threading.Event, poll_interval: float) -> None:
-    """Watcher thread: rescans Root_Address every `poll_interval` seconds until `stop` is set."""
+    """Watcher thread: rescans Root_Address/Video_Addresses every `poll_interval` seconds until `stop` is set."""
     while not stop.is_set():
         try:
             uploads.scan()
@@ -468,12 +697,13 @@ def watch_uploads(uploads: UploadQueue, stop: threading.Event, poll_interval: fl
 
 
 def main_loop(pipeline: Pipeline, poll_interval: float = POLL_INTERVAL, stability_seconds: float = STABILITY_SECONDS) -> None:
-    """Continuously watch Root_Address and process, in upload order, every folder whose videos finished uploading."""
+    """Continuously watch Root_Address/Video_Addresses and process, in upload order, every folder whose videos finished uploading."""
     shutdown = GracefulShutdown()
     uploads = UploadQueue(stability_seconds)
     watcher = threading.Thread(target=watch_uploads, args=(uploads, shutdown.event, poll_interval), name="upload-watcher", daemon=True)
     watcher.start()
-    print(f"Watching {VIDEO_SOURCE_GLOB} (stability: {stability_seconds:g} s, poll interval: {poll_interval:g} s)", flush=True)
+    print(f"Watching {VIDEO_SOURCE_GLOB} (stability: {stability_seconds:g} s, poll interval: {poll_interval:g} s); "
+          f"processing in {PROCESSING_ROOT}, CSVs and logs mirrored to {OUTPUT_ROOT}", flush=True)
 
     while not shutdown.requested:
         try:
@@ -501,9 +731,9 @@ def main_loop(pipeline: Pipeline, poll_interval: float = POLL_INTERVAL, stabilit
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Automatic Video Processor (AVP): side view, then front view, of every video folder")
     parser.add_argument("-C", "--clean", nargs="*", choices=VIEWS, metavar="VIEW", help="Delete the outputs of these views (default: side and front) before processing, so they are recomputed")
-    parser.add_argument("--video-list", nargs="*", help="Folders to clean with -C (default: every folder under Root_Address)")
-    parser.add_argument("--daemon", action="store_true", help="Run continuously: watch Root_Address and process each folder, in upload order, once its video stops being written")
-    parser.add_argument("--poll-interval", type=float, default=POLL_INTERVAL, help=f"Seconds between scans of Root_Address in --daemon mode (default: Daemon.poll_interval in config.yaml = {POLL_INTERVAL:g})")
+    parser.add_argument("--video-list", nargs="*", help="Video folders (inside Root_Address/Video_Addresses) to clean with -C, in the work folder and the output mirror (default: every video folder)")
+    parser.add_argument("--daemon", action="store_true", help="Run continuously: watch Root_Address/Video_Addresses and process each folder, in upload order, once its video stops being written")
+    parser.add_argument("--poll-interval", type=float, default=POLL_INTERVAL, help=f"Seconds between scans of Root_Address/Video_Addresses in --daemon mode (default: Daemon.poll_interval in config.yaml = {POLL_INTERVAL:g})")
     parser.add_argument("--stability-seconds", type=float, default=STABILITY_SECONDS, help=f"Seconds a video must go unwritten before its folder is queued (default: Daemon.stability_seconds in config.yaml = {STABILITY_SECONDS:g})")
     args = parser.parse_args()
 
@@ -520,4 +750,3 @@ if __name__ == "__main__":
                     print(f"Skipping already-processed folder: {_folder}")
                     continue
                 process_folder(_folder, pipeline)
-

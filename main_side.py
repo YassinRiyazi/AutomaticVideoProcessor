@@ -40,7 +40,8 @@ import  FrameExtractor
 from    cleanUp         import  create_video_from_images # type:ignore
 
 SECONDARY_ADDRESS: str = "side"
-VIDEO_SOURCE_GLOB: str = os.path.join(str(BaseUtils.config['Root_Address']), "*")
+VIDEO_SOURCE_GLOB: str = os.path.join(str(BaseUtils.config['Root_Address']),
+                                      str(BaseUtils.config['Video_Addresses']), "*")
 
 
 def cleanUP(_folder: str|os.PathLike[str]) -> None:

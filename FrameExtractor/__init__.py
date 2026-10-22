@@ -14,7 +14,7 @@
         + Forward (Folder Address:str|os.pathlike[str]) : Void [Run all above for a selected folder]
 
     Assumptions:
-        there is only one .mp4 file in the folder
+        there is exactly one supported video matching the parent folder name (optionally with an underscore suffix)
         there is no subfolder in the folder
         frames will be saved in a subfolder named 'frames'
         if frames folder already exists, it will not be overwritten unless wipe=True
@@ -50,6 +50,18 @@ import BaseUtils
 
 VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.mkv', '.mpeg', '.mpg', '.m4v')
 
+
+def video_matches_folder(folder: str, name: str) -> bool:
+    """Match `<folder>.<ext>` or `<folder>_<suffix>.<ext>`, excluding hidden uploads."""
+    stem, extension = os.path.splitext(name)
+    parent = os.path.basename(os.path.normpath(folder))
+    return (
+        not name.startswith('.')
+        and extension.lower() in VIDEO_EXTENSIONS
+        and (stem == parent or stem.startswith(parent + "_"))
+    )
+
+
 class FrameExtractor:
     def __init__(self,
                  InPlaceOutput: bool = False,
@@ -66,13 +78,13 @@ class FrameExtractor:
                     entry.path
                     for entry in entries
                     if entry.is_file(follow_symlinks=False)
-                    and entry.name.lower().endswith(VIDEO_EXTENSIONS)
+                    and video_matches_folder(path, entry.name)
                 )
 
             if len(video_candidates) != 1:
                 raise FileNotFoundError(
                     colorama.Fore.RED
-                    + f"Expected exactly one video file in the directory: {path}"
+                    + f"Expected exactly one video matching the parent folder name in: {path}"
                     + colorama.Style.RESET_ALL
                 )
 
