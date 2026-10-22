@@ -64,6 +64,8 @@ Each experiment is a folder in the input tree that contains **exactly one** vide
 ├── .done                       # * post_run finished
 ├── result.csv                  # * post_run: side/result.csv + front/result.csv, one row per frame
 ├── post_run_error.txt          # * Only if a post_run check failed
+├── experiment_parameters.csv   # * post_run: mass, gravity, viscosity, m*/m, tilt used (value, unit, source)
+├── <name>_camera.json          # Copy of the experiment JSON (not mirrored; the original is in the input tree)
 ├── side/
 │   ├── frames/Rotation.png     # BaseLine diagnostic (raw frames are deleted after success)
 │   ├── frames_rotated/         # BaseLine, then filtered by Utilities
@@ -93,6 +95,12 @@ Each experiment is a folder in the input tree that contains **exactly one** vide
 - `side/frames_rotated` and `front/frames_rotated` hold the same frames;
 - every kept frame except the last has exactly one row with no empty values in both CSVs, and no CSV has rows for other frames. The side view never measures the last frame because its velocity is a forward difference;
 - `side time (s)` equals `(frame - first frame) / fps_experiment`. CaMeasurer numbers time by row, so a skipped frame shifts the time and velocity of every frame after it.
+
+`post_run` also adds two columns:
+- `a (m/s^2)`: acceleration down the slope. It is twice the quadratic coefficient of a least-squares parabola fitted to `side x_center (cm)` over `Experiment_Parameters.acceleration_window` frames (21 frames = 5.25 ms) around each frame. This equals a Savitzky–Golay second derivative and uses the real frame times when frames are missing. A frame-to-frame difference is far too noisy: on tilt-20-rep-002 its standard deviation is 30.6 m/s², about 30 times the acceleration itself.
+- `friction force (uN)` = `mass · gravity · sin(tilt) − mass · mStarmRatio · a`, in N × 10⁶. Units are kg, m/s², degrees and m/s².
+
+`mass` (kg), `gravity` (m/s²), `viscosity` (Pa·s) and `mStarmRatio` are taken from the experiment's JSON (`<folder name>*.json`, copied into the work folder) if it has those keys, otherwise from `config.yaml`. The current camera JSONs have none of them, so the config values are used. The tilt angle comes from the JSON file name, or the folder name if there is no JSON, for example `tilt-20-rep-001_4000fps_camera.json` → 20°. If there is no `tilt-<angle>`, as in the `Fast…`/`slow…` folders, the friction force is left empty and the reason goes to `post_run_error.txt`. That file also notes when the JSON `fps` differs from `fps_experiment`. The values used, and the source of each, are written to `experiment_parameters.csv`.
 
 If a check fails, the problems are written to `post_run_error.txt` and `result.csv` still holds the frames both views measured. A folder whose views are finished but that has neither `result.csv` nor `post_run_error.txt` is merged on the next run or daemon scan. `cleanUP`/`-C` deletes both files together with the view outputs.
 
@@ -165,6 +173,11 @@ All modules read [config.yaml](config.yaml) through `BaseUtils.config`.
 | `Experiment_Parameters.cm_on_pixel_ratio` | `0.0039062` | CaMeasurer |
 | `Experiment_Parameters.front_cm_on_pixel_ratio` | `0.004542` | DropGeometry (constant front scale) |
 | `Experiment_Parameters.num_px_ratio` | `1` | CaMeasurer (pixel counts for fitting) |
+| `Experiment_Parameters.mass` | `39e-6` kg | main.py friction force (39 µL of water); overridden by the experiment JSON |
+| `Experiment_Parameters.gravity` | `9.810` m/s² | main.py friction force; overridden by the experiment JSON |
+| `Experiment_Parameters.viscosity` | `1e-3` Pa·s | main.py `experiment_parameters.csv`; overridden by the experiment JSON |
+| `Experiment_Parameters.mStarmRatio` | `1.05` | main.py friction force (m*/m); overridden by the experiment JSON |
+| `Experiment_Parameters.acceleration_window` | `21` frames | main.py: frames per local quadratic fit for `a (m/s^2)` |
 | `PreProcessing.buttom_Line_height` | `5` | CaMeasurer (rows cut from the bottom of each crop) |
 | `Super_Resolution.upscale_factor` | `3` | CaMeasurer |
 | `Super_Resolution.model_path` | `CaMeasurer/models/converted_model.pt` | CaMeasurer |

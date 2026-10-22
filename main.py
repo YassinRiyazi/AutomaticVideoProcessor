@@ -20,6 +20,7 @@
         python main.py -C front --video-list /path/a    # redo only the front view of these video folders
 """
 import  os
+import  re
 import  glob
 import  time
 import  queue
@@ -64,7 +65,13 @@ FPS_EXPERIMENT: float = float(BaseUtils.config["Experiment_Parameters"]["fps_exp
 
 MERGED_CSV: str = "result.csv"                   # `<folder>/result.csv`, written by post_run
 POST_RUN_ERROR: str = "post_run_error.txt"       # `<folder>/post_run_error.txt`, problems found by post_run
+PARAMETERS_CSV: str = "experiment_parameters.csv"  # `<folder>/experiment_parameters.csv`, values used for the friction force
 FRAME_COLUMN: str = "file number"
+
+# Experiment constants: (key in the camera JSON and in config.yaml Experiment_Parameters, unit). All SI.
+FRICTION_PARAMETERS: dict[str, str] = {"mass": "kg", "gravity": "m/s^2", "viscosity": "Pa s", "mStarmRatio": "-"}
+ACCELERATION_WINDOW: int = int(BaseUtils.config["Experiment_Parameters"].get("acceleration_window", 21))  # type: ignore
+TILT_PATTERN: re.Pattern[str] = re.compile(r"tilt-(\d+(?:\.\d+)?)", re.IGNORECASE)
 
 DAEMON_CONFIG: dict = BaseUtils.config.get("Daemon") or {}  # type: ignore
 STABILITY_SECONDS: float = float(DAEMON_CONFIG.get("stability_seconds", 60))
@@ -88,7 +95,7 @@ def delete_empty_folders(path: str) -> None:
 
 def cleanUP(_folder: str, view: str) -> None:
     """Deletes every output of one view (`<folder>/<view>`), including its `.done` marker and logs, and the merged result built from it."""
-    for name in (MERGED_CSV, POST_RUN_ERROR, DONE):
+    for name in (MERGED_CSV, POST_RUN_ERROR, PARAMETERS_CSV, DONE):
         path = os.path.join(_folder, name)
         if os.path.isfile(path):
             os.remove(path)
@@ -162,6 +169,16 @@ def mirror_results(work: str, out: str) -> None:
         partial = os.path.join(os.path.dirname(dst), f".{os.path.basename(dst)}.partial")
         shutil.copy2(src, partial)
         os.replace(partial, dst)
+
+
+def copy_experiment_json(_folder: str, work: str) -> None:
+    """Copies the experiment's JSON files (`<folder name>*.json`, e.g. the camera JSON) into its work folder for post_run."""
+    os.makedirs(work, exist_ok=True)
+    folder_name = os.path.basename(os.path.normpath(_folder))
+    for name in os.listdir(_folder):
+        stem, extension = os.path.splitext(name)
+        if extension.lower() == ".json" and (stem == folder_name or stem.startswith(folder_name + "_")):
+            shutil.copy2(os.path.join(_folder, name), os.path.join(work, name))
 
 
 def link_videos(_folder: str, work: str) -> list[str]:
@@ -490,17 +507,97 @@ def _sample(frames: list[str], limit: int = 5) -> str:
     return ", ".join(frames[:limit]) + (f", ... ({len(frames)} in total)" if len(frames) > limit else "")
 
 
+def experiment_jsons(_folder: str) -> list[str]:
+    """JSON files of an experiment folder named after it, e.g. `tilt-20-rep-001_4000fps_camera.json`."""
+    folder_name = os.path.basename(os.path.normpath(_folder))
+    return sorted(p for p in glob.glob(os.path.join(_folder, "*.json"))
+                  if os.path.splitext(os.path.basename(p))[0] == folder_name or os.path.basename(p).startswith(folder_name + "_"))
+
+
+def tilt_from_name(*names: str) -> float | None:
+    """Tilt angle in degrees from the first name containing `tilt-<angle>`, e.g. `tilt-20-rep-001_4000fps_camera.json` -> 20."""
+    for name in names:
+        match = TILT_PATTERN.search(os.path.basename(name))
+        if match:
+            return float(match.group(1))
+    return None
+
+
+def experiment_parameters(_folder: str) -> tuple[pd.DataFrame, list[str]]:
+    """
+    Values used for the friction force, one row per parameter (value, unit, source), and any problems found.
+    mass, gravity, viscosity and mStarmRatio come from the experiment JSON when it has them, otherwise from config.yaml;
+    the tilt angle (degrees) comes from the JSON file name, or the folder name if there is no JSON.
+    """
+    issues: list[str] = []
+    jsons = experiment_jsons(_folder)
+    data: dict = {}
+    for path in jsons:
+        try:
+            with open(path, encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                data = {**loaded, **data}
+        except (OSError, ValueError) as e:
+            issues.append(f"Could not read {os.path.basename(path)}: {e}")
+
+    rows: list[dict] = []
+    config = BaseUtils.config["Experiment_Parameters"]
+    for key, unit in FRICTION_PARAMETERS.items():
+        if isinstance(data.get(key), (int, float)) and not isinstance(data.get(key), bool):
+            rows.append({"parameter": key, "value": float(data[key]), "unit": unit, "source": os.path.basename(jsons[0]) if len(jsons) == 1 else "JSON"})
+        elif key in config:  # type: ignore
+            rows.append({"parameter": key, "value": float(config[key]), "unit": unit, "source": "config.yaml"})  # type: ignore
+        else:
+            rows.append({"parameter": key, "value": np.nan, "unit": unit, "source": "missing"})
+            issues.append(f"'{key}' is neither in the experiment JSON nor in config.yaml Experiment_Parameters; friction force not computed.")
+
+    tilt_source = next((n for n in [*map(os.path.basename, jsons), os.path.basename(os.path.normpath(_folder))] if tilt_from_name(n) is not None), None)
+    tilt = tilt_from_name(tilt_source) if tilt_source else None
+    rows.append({"parameter": "tilt", "value": np.nan if tilt is None else tilt, "unit": "degree", "source": tilt_source or "missing"})
+    if tilt is None:
+        issues.append("No 'tilt-<angle>' in the JSON or folder name; friction force not computed.")
+
+    if isinstance(data.get("fps"), (int, float)) and not np.isclose(float(data["fps"]), FPS_EXPERIMENT):
+        issues.append(f"The camera JSON has fps = {data['fps']:g}, but config.yaml fps_experiment = {FPS_EXPERIMENT:g} was used for time, velocity and acceleration.")
+    return pd.DataFrame(rows, columns=["parameter", "value", "unit", "source"]), issues
+
+
+def smoothed_acceleration(frames: pd.Series, 
+                          x_cm: pd.Series, 
+                          window: int = ACCELERATION_WINDOW, 
+                          fps: float = FPS_EXPERIMENT) -> np.ndarray:
+    """
+    Acceleration (m/s^2) along x: for each frame, twice the quadratic coefficient of a least-squares parabola fitted to
+    the position over the `window` frames around it (shifted inward at the ends). This equals a Savitzky–Golay second
+    derivative when no frame is missing, and uses the true frame times when some are.
+    """
+    index = frames.map(frame_index).to_numpy()
+    t = (index - index[0]) / fps
+    x_m = x_cm.to_numpy(dtype=float) / 100  # cm -> m
+    span = max(window - 1, 0)
+    acceleration = np.full(len(index), np.nan)
+    for i, n in enumerate(index):
+        lo = max(min(n - span // 2, index[-1] - span), index[0])
+        start, stop = np.searchsorted(index, lo), np.searchsorted(index, lo + span, side="right")
+        if stop - start >= 5:
+            acceleration[i] = 2 * np.polyfit(t[start:stop] - t[i], x_m[start:stop], 2)[0]
+    return acceleration
+
+
 def post_run(_folder: str) -> pd.DataFrame:
     """
     Merges `side/result.csv` and `front/result.csv` into `<folder>/result.csv`, one row per frame (matched on 'file number').
-    Side columns are prefixed with 'side ', front columns with 'front '.
+    Side columns are prefixed with 'side ', front columns with 'front '. Two columns are added: 'a (m/s^2)', the
+    smoothed acceleration down the slope, and 'friction force (uN)' = m·g·sin(tilt) − m·(m*/m)·a. The values used
+    (and where each came from) are written to `<folder>/experiment_parameters.csv`.
 
     Checks that both views finished without errors, that both kept the same frames (`<view>/frames_rotated`), and that
     every kept frame has exactly one complete row in both CSVs, with the side time matching the frame number.
     The side view never measures the last frame (its velocity is a forward difference), so that frame is left out.
     Problems are written to `<folder>/post_run_error.txt`; `result.csv` then holds only the frames both views measured.
     """
-    for name in (MERGED_CSV, POST_RUN_ERROR):
+    for name in (MERGED_CSV, POST_RUN_ERROR, PARAMETERS_CSV):
         path = os.path.join(_folder, name)
         if os.path.isfile(path):
             os.remove(path)
@@ -563,6 +660,21 @@ def post_run(_folder: str) -> pd.DataFrame:
         on=FRAME_COLUMN, how="inner", validate="one_to_one",
     )
     merged = merged.sort_values(FRAME_COLUMN, key=lambda s: s.map(frame_index)).reset_index(drop=True)
+
+    # Friction force F = m·g·sin(tilt) − m·(m*/m)·a, with a measured along the direction of motion (down the slope)
+    parameters, parameter_issues = experiment_parameters(_folder)
+    issues.extend(parameter_issues)
+    p = dict(zip(parameters["parameter"], parameters["value"]))
+    x_column = "side x_center (cm)"
+    if x_column in merged.columns and len(merged):
+        direction = 1.0 if merged[x_column].iloc[-1] >= merged[x_column].iloc[0] else -1.0
+        merged["a (m/s^2)"] = direction * smoothed_acceleration(merged[FRAME_COLUMN], merged[x_column])
+    else:
+        merged["a (m/s^2)"] = np.nan
+        issues.append(f"{SIDE}/result.csv has no '{x_column}' column; acceleration and friction force not computed.")
+    merged["friction force (uN)"] = (p["mass"] * p["gravity"] * np.sin(np.radians(p["tilt"]))
+                                     - p["mass"] * p["mStarmRatio"] * merged["a (m/s^2)"]) * 1e6  # N -> µN
+    parameters.to_csv(os.path.join(_folder, PARAMETERS_CSV), index=False)
     merged.to_csv(os.path.join(_folder, MERGED_CSV), index=False)
 
     if issues:
@@ -585,6 +697,7 @@ def process_folder(_folder: str, pipeline: Pipeline) -> None:
     space: ProcessingSpace = pipeline.space
     space.enforce(keep=work)
     links = link_videos(_folder, work)
+    copy_experiment_json(_folder, work)
     try:
         # The temporary folder may have been trimmed since an interrupted run: redo the views whose work outputs are gone
         if (is_pending(out, FRONT) or needs_post_run(out)) and not is_pending(out, SIDE) and not has_work_results(work, SIDE):

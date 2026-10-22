@@ -55,6 +55,14 @@ Experiment_Parameters:
   # 0.0039062 / 0.86, where 0.86 is the median front/side apex-height ratio in tilt-20-rep-001/002. Replace with a direct calibration if available.
   front_cm_on_pixel_ratio: 0.004542
   num_px_ratio: 1 #0.0039062
+  # Friction force (post_run): F = mass·gravity·sin(tilt) − mass·mStarmRatio·a.
+  # mass, gravity, viscosity and mStarmRatio are read from the experiment's camera JSON when it has these keys (SI units),
+  # otherwise from here. The tilt angle is read from the file name, e.g. tilt-20-rep-001_4000fps_camera.json -> 20°.
+  mass: 39e-6            # kg (a 39 µL water drop; ρ ≈ 1000 kg/m³ -> 39 mg)
+  mStarmRatio: 1.05      # m*/m: effective (inertial) mass over drop mass, dimensionless
+  gravity: 9.810         # m/s² (Germany)
+  viscosity: 1e-3        # Pa·s (water at room temperature)
+  acceleration_window: 21  # frames of the local quadratic fit differentiating x_center twice (Savitzky–Golay); 21 frames = 5.25 ms at 4000 fps
 
 PreProcessing:
   buttom_Line_height : 5 # pixels

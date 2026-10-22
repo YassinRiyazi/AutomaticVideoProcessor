@@ -118,17 +118,17 @@ class ProcessingSpaceTests(Roots):
 
 
 class ProcessFolderTests(Roots):
-    FRAMES = range(2301, 2306)
+    FRAMES = range(2301, 2311)
 
     def fake_side(self, work, _pipeline):
         address = Path(work) / main.SIDE
         self.assertTrue(any(p.suffix == ".mp4" for p in Path(work).iterdir()), "video must be linked into the work folder")
-        rows = ["file number,time (s),adv (degree)"]
+        rows = ["file number,time (s),x_center (cm),adv (degree)"]
         for i, n in enumerate(self.FRAMES):
             write(address / main.ROTATED_FRAMES_FOLDER / f"frame_{n:06d}.png")
             write(address / "SR_edge" / f"frame_{n:06d}.png")
             if n != self.FRAMES[-1]:
-                rows.append(f"frame_{n:06d}.png,{i / main.FPS_EXPERIMENT},100")
+                rows.append(f"frame_{n:06d}.png,{i / main.FPS_EXPERIMENT},{1 + 0.01 * i},100")
         write(address / "result.csv", "\n".join(rows) + "\n")
         write(address / main.DATABASES_FOLDER / "detections.csv", "image\n")
 
@@ -159,9 +159,11 @@ class ProcessFolderTests(Roots):
         out, work = Path(main.output_folder(str(folder))), Path(main.work_folder(str(folder)))
         self.assertEqual(sorted(p.name for p in folder.iterdir()), source_before)
         mirrored = sorted(str(p.relative_to(out)) for p in out.rglob("*") if p.is_file())
-        self.assertEqual(mirrored, sorted([".done", "result.csv", "front/.done", "front/result.csv",
+        self.assertEqual(mirrored, sorted([".done", "result.csv", "experiment_parameters.csv", "front/.done", "front/result.csv",
                                            "side/.done", "side/result.csv", "side/databases/detections.csv"]))
         self.assertEqual(len((out / "result.csv").read_text().splitlines()), 1 + len(self.FRAMES) - 1)
+        self.assertTrue((work / "tilt-25-rep-001_4000fps_camera.json").is_file(), "the camera JSON is copied to the work folder")
+        self.assertFalse((out / "tilt-25-rep-001_4000fps_camera.json").exists(), "JSON files are not mirrored")
         self.assertEqual(len(list((work / "side" / "SR_edge").glob("*.png"))), len(self.FRAMES))
         self.assertFalse(list(work.glob("*.mp4")), "the video link is removed after processing")
         self.assertFalse(main.needs_processing(str(folder)))
